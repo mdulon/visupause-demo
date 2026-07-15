@@ -1,0 +1,42 @@
+{
+  "name": "VisuPause Pro",
+  "short_name": "VisuPause",
+  "id": "./index.html",
+  "description": "Micro-pauses visuelles guidées pour le travail sur écran.",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050709",
+  "theme_color": "#050709",
+  "categories": ["health", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Démarrer VisuPause",
+      "short_name": "Démarrer",
+      "url": "./index.html",
+      "description": "Ouvrir le minuteur de pauses visuelles."
+    }
+  ]
+}

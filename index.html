@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VisuPause Pro">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050709">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>VisuPause Pro — EyeScore™</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css?v=7">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-ring"><div class="logo-dot"></div></div>
+    <span class="logo-name">VisuPause<span class="logo-pro">PRO</span></span>
+  </div>
+  <div class="hbtns">
+    <span class="dev-badge" id="devBadge">⚡ 2s</span>
+    <button class="hbtn notify" id="notifyBtn" data-action="toggle-notifications" type="button">🔔 Activer</button>
+    <button class="hbtn" id="settingsBtn" data-action="open-settings" type="button" data-i18n="settings.title">Paramètres</button>
+    <button class="hbtn dev" id="devBtn" data-action="toggle-dev">⚡ Dev</button>
+    <button class="hbtn" data-action="reset-session">↺ Session</button>
+  </div>
+</header>
+
+<main>
+  <div class="score-card">
+    <div class="triple-ring">
+      <svg class="ring-svg" viewBox="0 0 196 196">
+        <circle class="ring-track" cx="98" cy="98" r="90" stroke-width="2.5"/>
+        <circle class="ring-arc" id="arcBreak" cx="98" cy="98" r="90" stroke="#28d4b4" stroke-width="2.5" stroke-dasharray="565.5" stroke-dashoffset="565.5"/>
+      </svg>
+      <svg class="ring-svg" viewBox="0 0 196 196">
+        <circle class="ring-track" cx="98" cy="98" r="74" stroke-width="2.5"/>
+        <circle class="ring-arc" id="arcSession" cx="98" cy="98" r="74" stroke="#7c83f5" stroke-width="2.5" stroke-dasharray="464.9" stroke-dashoffset="464.9"/>
+      </svg>
+      <svg class="ring-svg" viewBox="0 0 196 196">
+        <circle class="ring-track" cx="98" cy="98" r="58" stroke-width="4.5"/>
+        <circle class="ring-arc" id="arcScore" cx="98" cy="98" r="58" stroke="#28d4b4" stroke-width="4.5" stroke-dasharray="364.4" stroke-dashoffset="364.4"/>
+      </svg>
+      <div class="ring-center">
+        <div class="score-num" id="scoreNum">—</div>
+        <div class="score-lbl">EyeScore™</div>
+        <div class="score-status" id="scoreStatus">Démarre le timer</div>
+      </div>
+    </div>
+    <div class="ring-legend">
+      <div class="leg"><div class="leg-dot" style="background:#28d4b4"></div><span data-i18n="legend.breaks">Pauses</span></div>
+      <div class="leg"><div class="leg-dot" style="background:#7c83f5"></div><span data-i18n="legend.session">Session</span></div>
+      <div class="leg"><div class="leg-dot" style="background:#28d4b4;height:5px"></div><span data-i18n="legend.total">Total</span></div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="metrics-card">
+      <div class="metric-row">
+        <div class="metric-head"><span class="mlabel" data-i18n="metric.breaks">⏸ Pauses respectées</span><span class="mval" id="mBreak">0 / 0</span></div>
+        <div class="mbar"><div class="mfill" id="mBreakBar" style="width:0%;background:var(--teal)"></div></div>
+        <div class="msub" id="mBreakSub">Prochaine pause dans —</div>
+      </div>
+      <hr class="divider">
+      <div class="metric-row">
+        <div class="metric-head"><span class="mlabel" data-i18n="metric.since">🕐 Depuis dernière pause</span><span class="mval" id="mFatigue">0 min</span></div>
+        <div class="mbar"><div class="mfill" id="mFatigueBar" style="width:0%"></div></div>
+        <div class="msub" id="mFatigueSub">Dans les limites recommandées</div>
+      </div>
+      <hr class="divider">
+      <div class="coach-panel" aria-live="polite">
+        <div class="coach-head">
+          <span class="mlabel" data-i18n="coach.label">◌ Coach visuel</span>
+          <span class="coach-pill" id="coachLevel">Prêt</span>
+        </div>
+        <div class="coach-title" id="coachTitle">Démarre une session</div>
+        <p class="coach-copy" id="coachCopy">Le coach adaptera les pauses selon ta récupération, les exercices déjà faits et le temps passé devant l’écran.</p>
+        <div class="coach-next">
+          <span id="coachNextIcon">—</span>
+          <span id="coachNextText">Prochain exercice intelligent</span>
+        </div>
+        <button class="coach-action" id="coachBreakBtn" data-action="start-break-now" type="button">Pause maintenant</button>
+      </div>
+      <hr class="divider">
+      <div class="timer-block">
+        <div class="timer-lbl-row">
+          <span class="mlabel" data-i18n="timer.label">⏱ Timer 20-20-20</span>
+          <span class="dev-badge" id="devBadgeTimer" style="display:none">⚡ 2s</span>
+        </div>
+        <div class="timer-disp" id="timerDisp">20:00</div>
+        <div class="timer-btns">
+          <button class="tbtn pri" id="startBtn" data-action="toggle-timer">▶ Démarrer</button>
+          <button class="tbtn" data-action="reset-timer">↺</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-head">
+      <span class="chart-title" data-i18n="chart.title">EyeScore™ — historique</span>
+      <span class="chart-meta" id="chartMeta">aucune donnée</span>
+    </div>
+    <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+  </div>
+
+  <div class="sess-strip">
+    <div class="sess-cell"><div class="sval" id="sTime">0m</div><div class="slbl" data-i18n="session.time">Session</div></div>
+    <div class="sess-cell"><div class="sval" id="sAvg">—</div><div class="slbl" data-i18n="session.avg">Score moyen</div></div>
+    <div class="sess-cell"><div class="sval" id="sBreaks">0</div><div class="slbl" data-i18n="session.breaks">Pauses prises</div></div>
+    <div class="sess-cell"><div class="sval" id="sExercise">—</div><div class="slbl" data-i18n="session.next">Prochain exercice</div></div>
+  </div>
+
+  <div class="ex-section">
+    <p class="ex-section-title" id="exSectionTitle">Bibliothèque d’exercices — cliquer pour pratiquer à tout moment</p>
+    <div id="exContainer"></div>
+  </div>
+</main>
+
+<footer class="legal-footer">
+  <a href="privacy.html">Privacy</a>
+  <span aria-hidden="true">·</span>
+  <a href="terms.html">Terms</a>
+</footer>
+
+<!-- BREAK OVERLAY -->
+<div class="break-overlay" id="breakOverlay" role="dialog" aria-modal="true" aria-labelledby="bTitle" aria-hidden="true">
+  <div class="break-anim-wrap" id="breakAnimWrap" style="height:190px;">
+    <canvas id="breakCanvas" style="display:block;width:100%;height:100%;"></canvas>
+  </div>
+  <div class="b-cat" id="bCat"></div>
+  <div class="b-src" id="bSrc"></div>
+  <h1 class="b-title" id="bTitle"></h1>
+  <p class="b-desc" id="bDesc"></p>
+  <p class="b-tip" id="bTip"></p>
+  <div class="break-ring-wrap">
+    <svg class="break-ring-svg" viewBox="0 0 76 76">
+      <circle class="br-track" cx="38" cy="38" r="34"/>
+      <circle class="br-prog" id="brProg" cx="38" cy="38" r="34"/>
+    </svg>
+    <div class="br-txt" id="brTxt">20</div>
+  </div>
+  <div class="bbtns">
+    <button class="bbtn acc" id="startBreakBtn" data-action="confirm-break-start">Démarrer la pause</button>
+    <button class="bbtn" id="fullBtn" data-action="toggle-break-fullscreen">Plein écran</button>
+    <button class="bbtn acc" id="extBtn" data-action="extend-break">+ 30 sec</button>
+    <button class="bbtn" id="endBreakBtn" data-action="end-break">Terminer ✓</button>
+  </div>
+</div>
+
+<!-- PRACTICE MODAL -->
+<div class="pmodal" id="pModal" role="dialog" aria-modal="true" aria-labelledby="pmName" aria-hidden="true">
+  <div class="pm-card">
+    <canvas class="pm-anim" id="pmCanvas"></canvas>
+    <div class="pm-body">
+      <div class="pm-source" id="pmSource"></div>
+      <div class="pm-name" id="pmName"></div>
+      <div class="pm-dur" id="pmDur"></div>
+      <p class="pm-desc" id="pmDesc"></p>
+      <p class="pm-tip" id="pmTip"></p>
+      <button class="pm-close" data-action="close-practice" data-i18n="action.close">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="settings-modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
+  <div class="settings-card">
+    <div class="settings-head">
+      <div>
+        <div class="settings-kicker" data-i18n="settings.kicker">Préférences</div>
+        <div class="settings-title" id="settingsTitle" data-i18n="settings.title">Paramètres</div>
+      </div>
+      <button class="icon-btn" data-action="close-settings" type="button" aria-label="Fermer les paramètres" data-i18n-aria-label="settings.close">×</button>
+    </div>
+    <div class="settings-body">
+      <section class="settings-section">
+        <div class="settings-label" data-i18n="settings.language">Langue</div>
+        <div class="segmented" id="languageSettings">
+          <button type="button" data-action="set-language" data-lang="fr">Français</button>
+          <button type="button" data-action="set-language" data-lang="en">English</button>
+        </div>
+      </section>
+      <section class="settings-section">
+        <div class="settings-row-head">
+          <div>
+            <div class="settings-label" data-i18n="settings.groups">Groupes d’exercices</div>
+            <div class="settings-sub" id="settingsSummary">Tous les exercices actifs</div>
+          </div>
+          <button class="mini-btn" data-action="reset-exercise-settings" type="button" data-i18n="action.reset">Réinitialiser</button>
+        </div>
+        <div class="settings-grid" id="categorySettings"></div>
+      </section>
+      <section class="settings-section">
+        <details class="advanced-settings">
+          <summary data-i18n="settings.advanced">Choix individuel des exercices</summary>
+          <div class="exercise-settings" id="exerciseSettings"></div>
+        </details>
+      </section>
+      <section class="settings-section">
+        <div class="settings-label" data-i18n="settings.breakDisplay">Affichage de pause</div>
+        <div class="settings-sub" data-i18n="settings.breakDisplayHelp">Choisis si la pause couvre la page ou demande aussi le plein écran navigateur.</div>
+        <div class="segmented" id="breakDisplaySettings">
+          <button type="button" data-action="set-break-display-mode" data-mode="page" data-i18n="mode.page">Page entière</button>
+          <button type="button" data-action="set-break-display-mode" data-mode="fullscreen" data-i18n="mode.fullscreen">Plein écran</button>
+        </div>
+      </section>
+      <section class="settings-section">
+        <div class="settings-label" data-i18n="settings.exitMode">Fin de pause</div>
+        <div class="segmented" id="exitModeSettings">
+          <button type="button" data-action="set-exit-mode" data-mode="manual" data-i18n="mode.button">Bouton</button>
+          <button type="button" data-action="set-exit-mode" data-mode="auto" data-i18n="mode.auto">Automatique</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="src/exercises.js"></script>
+<script src="src/animations.js"></script>
+<script src="src/score.js"></script>
+<script src="src/selector.js"></script>
+<script src="src/storage.js"></script>
+<script src="src/i18n.js"></script>
+<script src="app.js?v=7"></script>
+</body>
+</html>

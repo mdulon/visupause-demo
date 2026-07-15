@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VisuPause Pro">
+  <rect width="512" height="512" rx="112" fill="#050709"/>
+  <circle cx="256" cy="256" r="158" fill="none" stroke="#28d4b4" stroke-width="28"/>
+  <circle cx="256" cy="256" r="86" fill="none" stroke="#7c83f5" stroke-width="18" opacity=".9"/>
+  <circle cx="256" cy="256" r="34" fill="#28d4b4"/>
+  <path d="M138 256c34-57 70-84 118-84s84 27 118 84c-34 57-70 84-118 84s-84-27-118-84Z" fill="none" stroke="#d8eaff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>
+</svg>
