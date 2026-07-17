@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
@@ -89,7 +89,7 @@
       <hr class="divider">
       <div class="timer-block">
         <div class="timer-lbl-row">
-          <span class="mlabel" data-i18n="timer.label">⏱ Timer 20-20-20</span>
+          <span class="mlabel" data-i18n="timer.label">⏱ Minuteur de pause</span>
           <span class="dev-badge" id="devBadgeTimer" style="display:none">⚡ 2s</span>
         </div>
         <div class="timer-disp" id="timerDisp">20:00</div>
@@ -130,7 +130,7 @@
 
 <!-- BREAK OVERLAY -->
 <div class="break-overlay" id="breakOverlay" role="dialog" aria-modal="true" aria-labelledby="bTitle" aria-hidden="true">
-  <div class="break-anim-wrap" id="breakAnimWrap" style="height:190px;">
+  <div class="break-anim-wrap" id="breakAnimWrap">
     <canvas id="breakCanvas" style="display:block;width:100%;height:100%;"></canvas>
   </div>
   <div class="b-cat" id="bCat"></div>
@@ -188,6 +188,18 @@
       </section>
       <section class="settings-section">
         <div class="settings-row-head">
+          <label class="settings-label" for="workIntervalRange" data-i18n="settings.interval">Temps entre les pauses</label>
+          <span class="interval-badge" data-i18n="settings.intervalRecommended">20 min recommandé</span>
+        </div>
+        <div class="interval-control">
+          <input id="workIntervalRange" type="range" min="5" max="60" step="5" value="20" aria-describedby="workIntervalHelp">
+          <output id="workIntervalValue" for="workIntervalRange">20 min</output>
+        </div>
+        <div class="interval-scale" aria-hidden="true"><span>5 min</span><span>60 min</span></div>
+        <div class="settings-sub" id="workIntervalHelp" data-i18n="settings.intervalHelp">20 minutes reste le repère recommandé. Le nouveau rythme est sauvegardé sur cet appareil.</div>
+      </section>
+      <section class="settings-section">
+        <div class="settings-row-head">
           <div>
             <div class="settings-label" data-i18n="settings.groups">Groupes d’exercices</div>
             <div class="settings-sub" id="settingsSummary">Tous les exercices actifs</div>
@@ -226,7 +238,7 @@
 <script src="src/score.js"></script>
 <script src="src/selector.js"></script>
 <script src="src/storage.js"></script>
-<script src="src/i18n.js"></script>
-<script src="app.js?v=7"></script>
+<script src="src/i18n.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

@@ -9,11 +9,15 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
+const MIN_WORK_INTERVAL_MINUTES=5;
+const MAX_WORK_INTERVAL_MINUTES=60;
+const WORK_INTERVAL_STEP=5;
 const DEFAULT_SETTINGS={
   enabledCategories:Object.keys(CATS),
   disabledExercises:[],
   exitMode:'manual',
   breakDisplayMode:'page',
+  workIntervalMinutes:20,
   language:'fr'
 };
 
@@ -68,11 +72,12 @@ const UI = {
   settingsBtn:$('settingsBtn'),
   settingsModal:$('settingsModal'), categorySettings:$('categorySettings'), exerciseSettings:$('exerciseSettings'),
   settingsSummary:$('settingsSummary'), exitModeSettings:$('exitModeSettings'),
-  breakDisplaySettings:$('breakDisplaySettings'), languageSettings:$('languageSettings'), endBreakBtn:$('endBreakBtn')
+  breakDisplaySettings:$('breakDisplaySettings'), languageSettings:$('languageSettings'), endBreakBtn:$('endBreakBtn'),
+  workIntervalRange:$('workIntervalRange'), workIntervalValue:$('workIntervalValue')
 };
 
 // ═══ STATE ═════════════════════════════════════════════════════
-let workSec=20*60,breakSec=20;
+let workSec=DEFAULT_SETTINGS.workIntervalMinutes*60,breakSec=20;
 let workLeft=workSec,breakLeft=breakSec,breakTotal=breakSec;
 let workEndAt=null,breakEndAt=null;
 let running=false,inBreak=false,breakPending=false,breakComplete=false;
@@ -89,6 +94,8 @@ let activePracticeExercise=null,practiceResizeTimer=null;
 let practiceReturnFocus=null,settingsReturnFocus=null;
 let settings=normalizeSettings(loadSettings());
 let serviceWorkerReady=null;
+workSec=settings.workIntervalMinutes*60;
+workLeft=workSec;
 exOrder=shuffleIndices(getEligibleExercises().length);
 
 function normalizeSettings(raw={}){
@@ -101,11 +108,16 @@ function normalizeSettings(raw={}){
   const knownIds=new Set(EX.map(ex=>ex.id));
   const disabledExercises=[...disabledSet].filter(id=>knownIds.has(id));
   const hasActiveExercise=EX.some(ex=>activeCategories.includes(ex.cat)&&!disabledExercises.includes(ex.id));
+  const requestedInterval=Number(raw.workIntervalMinutes);
+  const workIntervalMinutes=Number.isFinite(requestedInterval)
+    ? Math.min(MAX_WORK_INTERVAL_MINUTES,Math.max(MIN_WORK_INTERVAL_MINUTES,Math.round(requestedInterval/WORK_INTERVAL_STEP)*WORK_INTERVAL_STEP))
+    : DEFAULT_SETTINGS.workIntervalMinutes;
   return {
     enabledCategories:hasActiveExercise?activeCategories:DEFAULT_SETTINGS.enabledCategories.slice(),
     disabledExercises:hasActiveExercise?disabledExercises:[],
     exitMode:raw.exitMode==='auto'?'auto':'manual',
     breakDisplayMode:raw.breakDisplayMode==='fullscreen'?'fullscreen':'page',
+    workIntervalMinutes,
     language:raw.language==='en'?'en':'fr'
   };
 }
@@ -187,6 +199,8 @@ function renderExerciseLibrary(){
 }
 function renderSettings(){
   const activeCount=EX.filter(isExerciseEnabled).length;
+  UI.workIntervalRange.value=String(settings.workIntervalMinutes);
+  UI.workIntervalValue.textContent=`${settings.workIntervalMinutes}${t('settings.minutes')}`;
   UI.settingsSummary.textContent=`${activeCount} / ${EX.length}${t('settings.summary')}`;
   UI.categorySettings.textContent='';
   Object.entries(CATS).forEach(([catKey,cat])=>{
@@ -280,6 +294,12 @@ function bindActions(){
       ? settings.disabledExercises.filter(item=>item!==id)
       : [...new Set([...settings.disabledExercises,id])];
     persistSettings();
+  });
+  UI.workIntervalRange.addEventListener('input',()=>{
+    UI.workIntervalValue.textContent=`${UI.workIntervalRange.value}${t('settings.minutes')}`;
+  });
+  UI.workIntervalRange.addEventListener('change',()=>{
+    setWorkIntervalMinutes(Number(UI.workIntervalRange.value));
   });
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape'&&UI.pModal.classList.contains('active'))closePractice();
@@ -477,6 +497,26 @@ function setBreakDisplayMode(mode){
   settings.breakDisplayMode=mode==='fullscreen'?'fullscreen':'page';
   persistSettings();
 }
+function setWorkIntervalMinutes(minutes){
+  const previousWorkSec=workSec;
+  settings.workIntervalMinutes=minutes;
+  settings=normalizeSettings(settings);
+  if(!devMode){
+    const nextWorkSec=settings.workIntervalMinutes*60;
+    if(running&&!inBreak&&!breakPending)syncWorkLeft();
+    const elapsed=Math.max(0,previousWorkSec-workLeft);
+    workSec=nextWorkSec;
+    if(!inBreak&&!breakPending){
+      workLeft=Math.max(0,nextWorkSec-elapsed);
+      if(running)workEndAt=Date.now()+workLeft*1000;
+    }
+  }
+  persistSettings();
+  if(!devMode&&running&&!inBreak&&!breakPending&&workLeft<=0){
+    closeSettings();
+    queueBreak();
+  }
+}
 function setLanguage(language){
   settings.language=language==='en'?'en':'fr';
   persistSettings();
@@ -500,6 +540,7 @@ function getUpcomingExercise(){
 }
 function getCoachPlan(minsSince,nextEx){
   const missedBreaks=Math.max(0,breaksDue-breaksTaken);
+  const intervalMinutes=workSec/60;
   if(breakPending)return {
     level:t('coach.toDo'),
     title:t('coach.pendingTitle'),
@@ -518,13 +559,13 @@ function getCoachPlan(minsSince,nextEx){
     copy:t('coach.startCopy'),
     next:nextEx
   };
-  if(minsSince>=20||missedBreaks>=2)return {
+  if(minsSince>=intervalMinutes||missedBreaks>=2)return {
     level:t('coach.priority'),
     title:t('coach.priorityTitle'),
     copy:t('coach.priorityCopy'),
     next:EX.find(ex=>['breath','relaxation','saccade'].includes(ex.cat))||nextEx
   };
-  if(minsSince>=15)return {
+  if(minsSince>=intervalMinutes*.75)return {
     level:t('coach.soon'),
     title:t('coach.soonTitle'),
     copy:t('coach.soonCopy'),
@@ -548,7 +589,8 @@ function updateUI(){
   const score=raw;
   const bsPct=breaksDue===0?1:breaksTaken/breaksDue;
   const minsSince=(Date.now()-lastBreakTime)/60000;
-  const tsPct=Math.max(0,1-minsSince/20);
+  const intervalMinutes=workSec/60;
+  const tsPct=Math.max(0,1-minsSince/intervalMinutes);
   setArc(UI.arcBreak,565.5,active?bsPct:0);
   setArc(UI.arcSession,464.9,active?tsPct:0);
   setArc(UI.arcScore,364.4,score/100);
@@ -564,9 +606,9 @@ function updateUI(){
   UI.mBreakSub.textContent=breakPending?t('metric.pending'):breaksDue===0?t('metric.nextBreak')+fmt(workLeft):`${Math.round(Math.max(0,breaksTaken/Math.max(1,breaksDue)*100))}${t('metric.respected')}`;
   const minsS=Math.round(minsSince);
   UI.mFatigue.textContent=minsS+t('time.minute');
-  UI.mFatigueBar.style.width=Math.min(minsSince/20*100,100)+'%';
-  UI.mFatigueBar.style.background=minsSince<12?'var(--teal)':minsSince<18?'var(--amber)':'var(--red)';
-  UI.mFatigueSub.textContent=minsSince<12?t('metric.ok'):minsSince<20?t('metric.soon'):t('metric.urgent');
+  UI.mFatigueBar.style.width=Math.min(minsSince/intervalMinutes*100,100)+'%';
+  UI.mFatigueBar.style.background=minsSince<intervalMinutes*.6?'var(--teal)':minsSince<intervalMinutes*.9?'var(--amber)':'var(--red)';
+  UI.mFatigueSub.textContent=minsSince<intervalMinutes*.6?t('metric.ok'):minsSince<intervalMinutes?t('metric.soon'):t('metric.urgent');
   if(!inBreak){
     UI.timerDisp.textContent=fmt(workLeft);
     UI.timerDisp.classList.toggle('warn',breakPending||(workLeft<=60&&running));
@@ -901,7 +943,7 @@ function closePractice(){
 
 // ═══ DEV MODE ══════════════════════════════════════════════════
 function toggleDev(){
-  devMode=!devMode;workSec=devMode?2:20*60;breakSec=devMode?4:20;
+  devMode=!devMode;workSec=devMode?2:settings.workIntervalMinutes*60;breakSec=devMode?4:20;
   UI.devBtn.classList.toggle('on',devMode);
   UI.devBadge.classList.toggle('show',devMode);
   UI.devBadgeTimer.style.display=devMode?'inline-block':'none';
