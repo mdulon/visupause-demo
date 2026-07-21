@@ -1,11 +1,11 @@
 const CATS = {
-  relaxation: { label: 'Relaxation & repos', color: 'var(--green)', cls: 'relaxation' },
-  pursuit: { label: 'Poursuite fluide', color: 'var(--purple)', cls: 'pursuit' },
-  training: { label: 'Accommodation et vergence', color: 'var(--teal)', cls: 'training' },
-  saccade: { label: 'Saccades & clignement', color: 'var(--amber)', cls: 'saccade' },
-  peripheral: { label: 'Vision périphérique', color: 'var(--bright)', cls: 'peripheral' },
-  breath: { label: 'Respiration & récupération', color: '#50a0e0', cls: 'breath' },
-  neck: { label: 'Nuque & posture', color: '#c08af0', cls: 'neck' }
+  relaxation: { label: 'Repos visuel hors écran', color: 'var(--green)', cls: 'relaxation' },
+  breath: { label: 'Repos passif & respiration', color: '#50a0e0', cls: 'breath' },
+  neck: { label: 'Mobilité & posture', color: '#c08af0', cls: 'neck' },
+  pursuit: { label: 'Entraînement · poursuite', color: 'var(--purple)', cls: 'pursuit' },
+  training: { label: 'Entraînement · focus', color: 'var(--teal)', cls: 'training' },
+  saccade: { label: 'Entraînement · saccades', color: 'var(--amber)', cls: 'saccade' },
+  peripheral: { label: 'Entraînement · périphérie', color: 'var(--bright)', cls: 'peripheral' }
 };
 
 function makeExercise(id, cat, ico, name, dur, anim, source, desc, tip, evidence = 'Confort') {
@@ -27,8 +27,8 @@ function makeExercise(id, cat, ico, name, dur, anim, source, desc, tip, evidence
 }
 
 const EX = [
-  makeExercise('distance-gaze', 'relaxation', '🔭', 'Regard lointain', '20 sec', 'depth', 'Règle 20-20-20', 'Fixe le centre et laisse la mise au point se relâcher vers le lointain.', 'Regarde ensuite un vrai point au loin si tu peux.', 'Fort'),
-  makeExercise('deep-sky', 'relaxation', '🌌', 'Ciel profond', '20 sec', 'depth', 'Ergonomie visuelle', 'Utilise le ciel étoilé comme repère pour relâcher la focalisation de près.', 'Aucun effort, juste distance et respiration.', 'Fort'),
+  makeExercise('distance-gaze', 'relaxation', '🔭', 'Regard lointain', '20 sec', 'depth', 'Pause de vision rapprochée', 'Détourne-toi de l’écran et regarde un point réellement éloigné, idéalement à 6 mètres ou davantage.', 'Ne cherche pas un détail précis : laisse simplement la mise au point se relâcher.', 'Repère'),
+  makeExercise('deep-sky', 'relaxation', '🪟', 'Regard par la fenêtre', '30 sec', 'depth', 'Changement de distance', 'Regarde dehors et laisse ton regard passer entre plusieurs plans éloignés, sans cible imposée.', 'Une vue lointaine réelle compte davantage qu’une illusion de profondeur sur l’écran.', 'Repère'),
   makeExercise('palming', 'relaxation', '🤲', 'Palming', '30 sec', 'palm', 'Pratique de confort', 'Couvre doucement les yeux fermés avec les paumes, sans pression.', 'Cherche le noir et la chaleur, jamais la compression.', 'Prudence'),
   makeExercise('green-drift', 'relaxation', '🌿', 'Dérive verte', '30 sec', 'nature', 'Restauration attentionnelle', 'Laisse le regard dériver sur un mouvement organique et doux.', 'C’est un exercice de repos, pas de performance.', 'Modéré'),
   makeExercise('pendulum', 'relaxation', '🕰', 'Pendule', '25 sec', 'pendule', 'Rythme de relaxation', 'Suis le pendule avec un regard souple et la tête immobile.', 'Tu peux synchroniser la respiration avec le balancement.'),
@@ -55,7 +55,7 @@ const EX = [
   makeExercise('field-expansion', 'peripheral', '◎', 'Expansion du champ', '20 sec', 'field', 'Conscience périphérique', 'Maintiens le centre stable pendant que les anneaux s’ouvrent.', 'Une attention large suffit.'),
   makeExercise('quiet-periphery', 'peripheral', '✺', 'Périphérie calme', '20 sec', 'peripheral', 'Reset visuel', 'Garde la fixation centrale et remarque doucement l’activité en bordure.', 'C’est un exercice d’attention, pas un test de netteté.', 'Modéré'),
 
-  makeExercise('breath-look', 'breath', '◡', 'Respiration et regard', '40 sec', 'breathlook', 'Réinitialisation respiratoire', 'Inspire en regardant au loin, expire les yeux doucement fermés.', 'Tu peux allonger l’expiration si c’est confortable.', 'Modéré'),
+  makeExercise('breath-look', 'breath', '◡', 'Respiration et regard lointain', '40 sec', 'breathlook', 'Pause hors écran', 'Tourne-toi vers une vue éloignée : inspire sans effort, puis expire les yeux doucement fermés.', 'Tu peux allonger l’expiration si c’est confortable.', 'Modéré'),
   makeExercise('stillness', 'breath', '☾', 'Pause immobile', '20 sec', 'stillness', 'Micro-pause', 'Prends une pause presque immobile et relâche tout le visage.', 'Parfois, le meilleur exercice consiste à ne rien faire.', 'Prudence'),
   makeExercise('dark-rest', 'breath', '☾', 'Repos sombre', '20 sec', 'stillness', 'Pause passive', 'Repose-toi les yeux fermés ou mi-clos avec une stimulation minimale.', 'Utile quand toute animation semble déjà trop intense.', 'Prudence'),
 
@@ -64,5 +64,21 @@ const EX = [
   makeExercise('chin-nod', 'neck', '⌄', 'Menton poitrine', '25 sec', 'chinnod', 'Mobilité cervicale contrôlée', 'Descends doucement le menton vers la poitrine, puis reviens à une position neutre.', 'Évite de pousser la tête vers l’arrière ; reste dans une amplitude confortable.', 'Prudence'),
   makeExercise('shoulder-reset', 'neck', '⌁', 'Épaules arrière', '30 sec', 'shoulder', 'Reset postural', 'Roule doucement les épaules vers l’arrière puis relâche la nuque et la mâchoire.', 'Pense “large et bas” plutôt que “fort et haut”.', 'Prudence')
 ];
+
+// Only passive, real-distance and posture breaks enter the automatic rotation.
+// Screen-following exercises remain available in the library as optional practice.
+const DEFAULT_BREAK_IDS = new Set([
+  'distance-gaze', 'deep-sky', 'blink', 'blink-tempo', 'breath-look', 'stillness', 'dark-rest',
+  'neck-turns', 'neck-tilts', 'chin-nod', 'shoulder-reset'
+]);
+const OFFSCREEN_IDS = new Set([
+  'distance-gaze', 'deep-sky', 'blink', 'blink-tempo', 'breath-look', 'stillness', 'dark-rest',
+  'neck-turns', 'neck-tilts', 'chin-nod', 'shoulder-reset'
+]);
+
+EX.forEach(exercise => {
+  exercise.defaultEnabled = DEFAULT_BREAK_IDS.has(exercise.id);
+  exercise.pauseMode = OFFSCREEN_IDS.has(exercise.id) ? 'offscreen' : 'screen';
+});
 
 window.VisuData = { CATS, EX };

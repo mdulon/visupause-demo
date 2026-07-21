@@ -2,7 +2,7 @@
   "name": "VisuPause Pro",
   "short_name": "VisuPause",
   "id": "./index.html",
-  "description": "Micro-pauses visuelles guidées pour le travail sur écran.",
+  "description": "Des rappels discrets pour regarder au loin, changer de position et faire de vraies pauses hors écran.",
   "lang": "fr",
   "start_url": "./index.html",
   "scope": "./",
@@ -36,7 +36,7 @@
       "name": "Démarrer VisuPause",
       "short_name": "Démarrer",
       "url": "./index.html",
-      "description": "Ouvrir le minuteur de pauses visuelles."
+      "description": "Ouvrir le minuteur de pauses visuelles et posturales."
     }
   ]
 }

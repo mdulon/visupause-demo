@@ -9,11 +9,11 @@
 <meta name="theme-color" content="#050709">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>VisuPause Pro — EyeScore™</title>
+<title>VisuPause Pro — Des pauses qui quittent l’écran</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 
@@ -32,6 +32,19 @@
 </header>
 
 <main>
+  <section class="approach-card" aria-labelledby="approachTitle">
+    <div class="approach-copy">
+      <span class="approach-kicker" data-i18n="approach.kicker">Nouvelle approche</span>
+      <h1 id="approachTitle" data-i18n="approach.title">La meilleure pause visuelle se passe loin de cet écran.</h1>
+      <p data-i18n="approach.copy">VisuPause te prévient sans bloquer ton travail, puis s’efface lorsque tu choisis de faire une pause.</p>
+    </div>
+    <div class="approach-principles">
+      <div><span>01</span><strong data-i18n="approach.distance">Regarder réellement au loin</strong></div>
+      <div><span>02</span><strong data-i18n="approach.posture">Changer de position et bouger</strong></div>
+      <div><span>03</span><strong data-i18n="approach.optional">Garder l’entraînement visuel optionnel</strong></div>
+    </div>
+  </section>
+
   <div class="score-card">
     <div class="triple-ring">
       <svg class="ring-svg" viewBox="0 0 196 196">
@@ -113,11 +126,20 @@
     <div class="sess-cell"><div class="sval" id="sTime">0m</div><div class="slbl" data-i18n="session.time">Session</div></div>
     <div class="sess-cell"><div class="sval" id="sAvg">—</div><div class="slbl" data-i18n="session.avg">Score moyen</div></div>
     <div class="sess-cell"><div class="sval" id="sBreaks">0</div><div class="slbl" data-i18n="session.breaks">Pauses prises</div></div>
-    <div class="sess-cell"><div class="sval" id="sExercise">—</div><div class="slbl" data-i18n="session.next">Prochain exercice</div></div>
+    <div class="sess-cell"><div class="sval" id="sExercise">—</div><div class="slbl" data-i18n="session.next">Prochaine pause</div></div>
   </div>
 
   <div class="ex-section">
-    <p class="ex-section-title" id="exSectionTitle">Bibliothèque d’exercices — cliquer pour pratiquer à tout moment</p>
+    <div class="library-head">
+      <div>
+        <p class="ex-section-title" id="exSectionTitle">Bibliothèque de pauses et d’exercices</p>
+        <p class="ex-section-copy" data-i18n="library.copy">Les pauses hors écran et posturales sont actives par défaut. Les exercices qui demandent de fixer l’écran restent disponibles sur demande.</p>
+      </div>
+      <div class="library-legend" aria-label="Légende">
+        <span class="auto" data-i18n="library.auto">Rotation de pause</span>
+        <span class="optional" data-i18n="library.optional">Sur demande</span>
+      </div>
+    </div>
     <div id="exContainer"></div>
   </div>
 </main>
@@ -128,10 +150,28 @@
   <a href="terms.html">Terms</a>
 </footer>
 
+<!-- NON-BLOCKING BREAK NUDGE -->
+<aside class="break-nudge" id="breakNudge" role="status" aria-live="polite" aria-hidden="true" inert>
+  <div class="nudge-mark" aria-hidden="true">↗</div>
+  <div class="nudge-copy">
+    <strong data-i18n="nudge.title">Une pause est prête</strong>
+    <span id="nudgeExercise">Regarde au loin quand tu arrives à un point naturel.</span>
+  </div>
+  <div class="nudge-actions">
+    <button class="nudge-btn primary" data-action="confirm-break-start" type="button" data-i18n="nudge.start">La faire maintenant</button>
+    <button class="nudge-btn" data-action="snooze-break" type="button" data-i18n="nudge.snooze">Dans 5 min</button>
+  </div>
+</aside>
+
 <!-- BREAK OVERLAY -->
 <div class="break-overlay" id="breakOverlay" role="dialog" aria-modal="true" aria-labelledby="bTitle" aria-hidden="true">
   <div class="break-anim-wrap" id="breakAnimWrap">
     <canvas id="breakCanvas" style="display:block;width:100%;height:100%;"></canvas>
+    <div class="offscreen-cue" id="offscreenCue" aria-hidden="true">
+      <span class="offscreen-icon" id="offscreenIcon">↗</span>
+      <strong data-i18n="break.lookAway">Lis la consigne, puis quitte l’écran</strong>
+      <small data-i18n="break.cueFades">L’interface s’efface dans quelques secondes.</small>
+    </div>
   </div>
   <div class="b-cat" id="bCat"></div>
   <div class="b-src" id="bSrc"></div>
@@ -157,6 +197,10 @@
 <div class="pmodal" id="pModal" role="dialog" aria-modal="true" aria-labelledby="pmName" aria-hidden="true">
   <div class="pm-card">
     <canvas class="pm-anim" id="pmCanvas"></canvas>
+    <div class="pm-offscreen" id="pmOffscreen" aria-hidden="true">
+      <span id="pmOffscreenIcon">↗</span>
+      <strong data-i18n="practice.offscreen">Cet exercice se pratique loin de l’écran</strong>
+    </div>
     <div class="pm-body">
       <div class="pm-source" id="pmSource"></div>
       <div class="pm-name" id="pmName"></div>
@@ -189,24 +233,25 @@
       <section class="settings-section">
         <div class="settings-row-head">
           <label class="settings-label" for="workIntervalRange" data-i18n="settings.interval">Temps entre les pauses</label>
-          <span class="interval-badge" data-i18n="settings.intervalRecommended">20 min recommandé</span>
+          <span class="interval-badge" data-i18n="settings.intervalRecommended">Repère : 20 min</span>
         </div>
         <div class="interval-control">
           <input id="workIntervalRange" type="range" min="5" max="60" step="5" value="20" aria-describedby="workIntervalHelp">
           <output id="workIntervalValue" for="workIntervalRange">20 min</output>
         </div>
         <div class="interval-scale" aria-hidden="true"><span>5 min</span><span>60 min</span></div>
-        <div class="settings-sub" id="workIntervalHelp" data-i18n="settings.intervalHelp">20 minutes reste le repère recommandé. Le nouveau rythme est sauvegardé sur cet appareil.</div>
+        <div class="settings-sub" id="workIntervalHelp" data-i18n="settings.intervalHelp">Vingt minutes est un repère courant, pas un seuil médical. Choisis un rythme compatible avec ta concentration.</div>
       </section>
       <section class="settings-section">
         <div class="settings-row-head">
           <div>
-            <div class="settings-label" data-i18n="settings.groups">Groupes d’exercices</div>
+            <div class="settings-label" data-i18n="settings.groups">Contenu des pauses</div>
             <div class="settings-sub" id="settingsSummary">Tous les exercices actifs</div>
           </div>
           <button class="mini-btn" data-action="reset-exercise-settings" type="button" data-i18n="action.reset">Réinitialiser</button>
         </div>
         <div class="settings-grid" id="categorySettings"></div>
+        <div class="settings-sub" data-i18n="settings.groupsHelp">Les exercices de suivi sur écran sont exclus de la rotation par défaut, mais restent accessibles dans la bibliothèque.</div>
       </section>
       <section class="settings-section">
         <details class="advanced-settings">
@@ -238,7 +283,7 @@
 <script src="src/score.js"></script>
 <script src="src/selector.js"></script>
 <script src="src/storage.js"></script>
-<script src="src/i18n.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="src/i18n.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
