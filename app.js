@@ -9,10 +9,13 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
-const MIN_WORK_INTERVAL_MINUTES=5;
-const MAX_WORK_INTERVAL_MINUTES=60;
-const WORK_INTERVAL_STEP=5;
-const SETTINGS_VERSION=2;
+const REMINDER_KINDS=['visual','posture'];
+const INTERVAL_LIMITS={
+  visual:{ min:10,max:30,step:5 },
+  posture:{ min:30,max:90,step:15 }
+};
+const OVERLAP_GRACE_SECONDS=5*60;
+const SETTINGS_VERSION=3;
 const DEFAULT_ENABLED_CATEGORIES=[...new Set(EX.filter(ex=>ex.defaultEnabled).map(ex=>ex.cat))];
 const DEFAULT_DISABLED_EXERCISES=EX.filter(ex=>!ex.defaultEnabled).map(ex=>ex.id);
 const DEFAULT_SETTINGS={
@@ -20,7 +23,8 @@ const DEFAULT_SETTINGS={
   disabledExercises:DEFAULT_DISABLED_EXERCISES,
   exitMode:'manual',
   breakDisplayMode:'page',
-  workIntervalMinutes:20,
+  visualIntervalMinutes:20,
+  postureIntervalMinutes:45,
   language:'fr',
   settingsVersion:SETTINGS_VERSION
 };
@@ -77,65 +81,89 @@ const UI = {
   settingsModal:$('settingsModal'), categorySettings:$('categorySettings'), exerciseSettings:$('exerciseSettings'),
   settingsSummary:$('settingsSummary'), exitModeSettings:$('exitModeSettings'),
   breakDisplaySettings:$('breakDisplaySettings'), languageSettings:$('languageSettings'), endBreakBtn:$('endBreakBtn'),
-  workIntervalRange:$('workIntervalRange'), workIntervalValue:$('workIntervalValue'),
+  visualIntervalRange:$('visualIntervalRange'), visualIntervalValue:$('visualIntervalValue'),
+  postureIntervalRange:$('postureIntervalRange'), postureIntervalValue:$('postureIntervalValue'),
   breakNudge:$('breakNudge'), nudgeExercise:$('nudgeExercise'), offscreenCue:$('offscreenCue'),
-  offscreenIcon:$('offscreenIcon'), pmOffscreen:$('pmOffscreen'), pmOffscreenIcon:$('pmOffscreenIcon')
+  nudgeTitle:document.querySelector('#breakNudge strong'), timerNext:$('timerNext'),
+  offscreenIcon:$('offscreenIcon'), offscreenCueTitle:$('offscreenCueTitle'), offscreenCueDetail:$('offscreenCueDetail'),
+  pmOffscreen:$('pmOffscreen'), pmOffscreenIcon:$('pmOffscreenIcon')
 };
 
 // ═══ STATE ═════════════════════════════════════════════════════
-let workSec=DEFAULT_SETTINGS.workIntervalMinutes*60,breakSec=20;
-let workLeft=workSec,breakLeft=breakSec,breakTotal=breakSec;
-let workEndAt=null,breakEndAt=null;
+let visualSec=DEFAULT_SETTINGS.visualIntervalMinutes*60,postureSec=DEFAULT_SETTINGS.postureIntervalMinutes*60,workSec=visualSec,breakSec=20;
+let reminderLeft={ visual:visualSec,posture:postureSec };
+let reminderEndAt={ visual:null,posture:null };
+let workLeft=Math.min(reminderLeft.visual,reminderLeft.posture),breakLeft=breakSec,breakTotal=breakSec;
+let breakEndAt=null;
 let running=false,inBreak=false,breakPending=false,breakComplete=false;
 let breaksDue=0,breaksTaken=0;
-let exOrder=shuffleIndices(EX.length);
-let exIdx=0,extUsed=false;
+let exerciseQueues={ visual:{ order:[],cursor:0 },posture:{ order:[],cursor:0 },all:{ order:[],cursor:0 } };
+let extUsed=false;
 let ticker=null,breakTicker=null;
 let sessionStart=Date.now(),scoreHistory=loadHistory();
-let smoothScore=100,lastBreakTime=Date.now(),devMode=false,chart=null,chartResizeTimer=null;
+let smoothScore=100,lastBreakTime=Date.now(),lastVisualBreakTime=Date.now(),lastPostureBreakTime=Date.now(),devMode=false,chart=null,chartResizeTimer=null;
 let lastExerciseCat=null,lastHistMinute='',exerciseDiversity=new Set(),pendingPick=null;
 let notificationsEnabled=loadNotificationPreference(),titleTimer=null;
-let activeBreakExercise=null,activeBreakLarge=false,resizeTimer=null;
+let activeBreakExercise=null,activeBreakKind=null,activeBreakLarge=false,resizeTimer=null;
 let activePracticeExercise=null,practiceResizeTimer=null;
 let practiceReturnFocus=null,settingsReturnFocus=null;
-let offscreenFadeTimer=null,scheduledDueOpen=false;
+let pendingReminderKind=null,scheduledDueOpen=false;
 let settings=normalizeSettings(loadSettings());
 saveSettings(settings);
 let serviceWorkerReady=null;
-workSec=settings.workIntervalMinutes*60;
-workLeft=workSec;
-exOrder=shuffleIndices(getEligibleExercises().length);
+visualSec=settings.visualIntervalMinutes*60;
+postureSec=settings.postureIntervalMinutes*60;
+workSec=visualSec;
+reminderLeft={ visual:visualSec,posture:postureSec };
+workLeft=Math.min(reminderLeft.visual,reminderLeft.posture);
+resetExerciseQueues();
 
 function normalizeSettings(raw={}){
   const categoryKeys=Object.keys(CATS);
-  const currentVersion=raw.settingsVersion===SETTINGS_VERSION;
-  const enabledCategories=currentVersion&&Array.isArray(raw.enabledCategories)
+  const hasSavedExerciseSettings=Number(raw.settingsVersion)>=2;
+  const enabledCategories=hasSavedExerciseSettings&&Array.isArray(raw.enabledCategories)
     ? raw.enabledCategories.filter(cat=>categoryKeys.includes(cat))
     : DEFAULT_SETTINGS.enabledCategories.slice();
   const activeCategories=enabledCategories.length?enabledCategories:DEFAULT_SETTINGS.enabledCategories.slice();
-  const disabledSet=new Set(currentVersion&&Array.isArray(raw.disabledExercises)?raw.disabledExercises:DEFAULT_SETTINGS.disabledExercises);
+  const disabledSet=new Set(hasSavedExerciseSettings&&Array.isArray(raw.disabledExercises)?raw.disabledExercises:DEFAULT_SETTINGS.disabledExercises);
   const knownIds=new Set(EX.map(ex=>ex.id));
   const disabledExercises=[...disabledSet].filter(id=>knownIds.has(id));
-  const hasActiveExercise=EX.some(ex=>activeCategories.includes(ex.cat)&&!disabledExercises.includes(ex.id));
-  const requestedInterval=Number(raw.workIntervalMinutes);
-  const workIntervalMinutes=Number.isFinite(requestedInterval)
-    ? Math.min(MAX_WORK_INTERVAL_MINUTES,Math.max(MIN_WORK_INTERVAL_MINUTES,Math.round(requestedInterval/WORK_INTERVAL_STEP)*WORK_INTERVAL_STEP))
-    : DEFAULT_SETTINGS.workIntervalMinutes;
+  const hasActiveExercise=EX.some(ex=>ex.reminderKind&&activeCategories.includes(ex.cat)&&!disabledExercises.includes(ex.id));
+  const legacyVisualInterval=Number(raw.workIntervalMinutes);
+  const requestedVisualInterval=Number(raw.visualIntervalMinutes);
+  const visualIntervalMinutes=normalizeInterval(
+    'visual',
+    Number.isFinite(requestedVisualInterval)?requestedVisualInterval:legacyVisualInterval,
+    DEFAULT_SETTINGS.visualIntervalMinutes
+  );
+  const postureIntervalMinutes=normalizeInterval(
+    'posture',
+    Number(raw.postureIntervalMinutes),
+    DEFAULT_SETTINGS.postureIntervalMinutes
+  );
   return {
     enabledCategories:hasActiveExercise?activeCategories:DEFAULT_SETTINGS.enabledCategories.slice(),
     disabledExercises:hasActiveExercise?disabledExercises:DEFAULT_SETTINGS.disabledExercises.slice(),
     exitMode:raw.exitMode==='auto'?'auto':'manual',
     breakDisplayMode:raw.breakDisplayMode==='fullscreen'?'fullscreen':'page',
-    workIntervalMinutes,
+    visualIntervalMinutes,
+    postureIntervalMinutes,
     language:raw.language==='en'?'en':'fr',
     settingsVersion:SETTINGS_VERSION
   };
 }
+function normalizeInterval(kind,value,fallback){
+  const limits=INTERVAL_LIMITS[kind];
+  if(!Number.isFinite(value))return fallback;
+  return Math.min(limits.max,Math.max(limits.min,Math.round(value/limits.step)*limits.step));
+}
 function persistSettings(){
+  if(running&&!inBreak&&!breakPending)syncWorkLeft();
   settings=normalizeSettings(settings);
   saveSettings(settings);
-  exOrder=shuffleIndices(getEligibleExercises().length);
-  exIdx=0;
+  resetExerciseQueues();
+  updateDerivedWorkLeft();
+  if(running&&!inBreak&&!breakPending)setReminderDeadlines();
   renderExerciseLibrary();
   renderSettings();
   applyLanguage();
@@ -166,13 +194,21 @@ function applyLanguage(){
   if(breakPending)showPendingBreak();
 }
 function isCategoryEnabled(cat){return settings.enabledCategories.includes(cat);}
-function isExerciseEnabled(ex){return isCategoryEnabled(ex.cat)&&!settings.disabledExercises.includes(ex.id);}
-function getEligibleExerciseRecords(){
-  const records=EX.map((exercise,index)=>({ exercise,index })).filter(record=>isExerciseEnabled(record.exercise));
-  return records.length?records:EX.map((exercise,index)=>({ exercise,index }));
+function isExerciseEnabled(ex){return Boolean(ex.reminderKind)&&isCategoryEnabled(ex.cat)&&!settings.disabledExercises.includes(ex.id);}
+function getEligibleExerciseRecords(kind=null){
+  const records=EX.map((exercise,index)=>({ exercise,index }))
+    .filter(record=>isExerciseEnabled(record.exercise)&&(!kind||record.exercise.reminderKind===kind));
+  return records;
 }
-function getEligibleExercises(){return getEligibleExerciseRecords().map(record=>record.exercise);}
+function getEligibleExercises(kind=null){return getEligibleExerciseRecords(kind).map(record=>record.exercise);}
 function getExerciseGlobalIndex(exercise){return EX.findIndex(item=>item.id===exercise.id);}
+function resetExerciseQueues(){
+  exerciseQueues={
+    visual:{ order:shuffleIndices(getEligibleExercises('visual').length),cursor:0 },
+    posture:{ order:shuffleIndices(getEligibleExercises('posture').length),cursor:0 },
+    all:{ order:shuffleIndices(getEligibleExercises().length),cursor:0 }
+  };
+}
 function renderExerciseLibrary(){
   UI.exContainer.textContent='';
   const activeCount=EX.filter(isExerciseEnabled).length;
@@ -202,7 +238,7 @@ function renderExerciseLibrary(){
       const actions=el('div', { className:'ex-actions' });
       actions.append(
         el('button', { className:'ex-mini', text:t('action.description'), attrs:{ type:'button', 'data-exercise-index':String(i) } }),
-        el('button', { className:'ex-mini primary', text:t(ex.pauseMode==='offscreen'?'action.preview':'action.test'), attrs:{ type:'button', 'data-test-exercise-index':String(i) } })
+        el('button', { className:'ex-mini primary', text:t(ex.pauseMode!=='screen'?'action.preview':'action.test'), attrs:{ type:'button', 'data-test-exercise-index':String(i) } })
       );
       c.append(actions);
       grid.appendChild(c);
@@ -211,12 +247,14 @@ function renderExerciseLibrary(){
 }
 function renderSettings(){
   const activeCount=EX.filter(isExerciseEnabled).length;
-  UI.workIntervalRange.value=String(settings.workIntervalMinutes);
-  UI.workIntervalValue.textContent=`${settings.workIntervalMinutes}${t('settings.minutes')}`;
+  UI.visualIntervalRange.value=String(settings.visualIntervalMinutes);
+  UI.visualIntervalValue.textContent=`${settings.visualIntervalMinutes}${t('settings.minutes')}`;
+  UI.postureIntervalRange.value=String(settings.postureIntervalMinutes);
+  UI.postureIntervalValue.textContent=`${settings.postureIntervalMinutes}${t('settings.minutes')}`;
   UI.settingsSummary.textContent=`${activeCount} / ${EX.length}${t('settings.summary')}`;
   UI.categorySettings.textContent='';
-  Object.entries(CATS).forEach(([catKey,cat])=>{
-    const count=EX.filter(ex=>ex.cat===catKey&&!settings.disabledExercises.includes(ex.id)).length;
+  Object.entries(CATS).filter(([catKey])=>EX.some(ex=>ex.cat===catKey&&ex.reminderKind)).forEach(([catKey,cat])=>{
+    const count=EX.filter(ex=>ex.cat===catKey&&ex.reminderKind&&!settings.disabledExercises.includes(ex.id)).length;
     const item=el('label', { className:'check-row' });
     const input=el('input', { attrs:{ type:'checkbox', 'data-setting-cat':catKey } });
     input.checked=isCategoryEnabled(catKey);
@@ -224,14 +262,14 @@ function renderSettings(){
     UI.categorySettings.appendChild(item);
   });
   UI.exerciseSettings.textContent='';
-  Object.entries(CATS).forEach(([catKey,cat])=>{
+  Object.entries(CATS).filter(([catKey])=>EX.some(ex=>ex.cat===catKey&&ex.reminderKind)).forEach(([catKey,cat])=>{
     const group=el('div', { className:'exercise-setting-group' });
     group.append(el('div', { className:'exercise-setting-title', text:catLabel(catKey) }));
-    EX.filter(ex=>ex.cat===catKey).forEach(ex=>{
+    EX.filter(ex=>ex.cat===catKey&&ex.reminderKind).forEach(ex=>{
       const row=el('label', { className:'check-row compact' });
       const input=el('input', { attrs:{ type:'checkbox', 'data-setting-exercise':ex.id } });
-      input.checked=!settings.disabledExercises.includes(ex.id);
-      input.disabled=!isCategoryEnabled(catKey);
+      input.checked=Boolean(ex.reminderKind)&&!settings.disabledExercises.includes(ex.id);
+      input.disabled=!ex.reminderKind||!isCategoryEnabled(catKey);
       row.append(input, el('span', { text:exerciseName(ex) }), el('em', { text:ex.dur }));
       group.append(row);
     });
@@ -312,11 +350,17 @@ function bindActions(){
       : [...new Set([...settings.disabledExercises,id])];
     persistSettings();
   });
-  UI.workIntervalRange.addEventListener('input',()=>{
-    UI.workIntervalValue.textContent=`${UI.workIntervalRange.value}${t('settings.minutes')}`;
+  UI.visualIntervalRange.addEventListener('input',()=>{
+    UI.visualIntervalValue.textContent=`${UI.visualIntervalRange.value}${t('settings.minutes')}`;
   });
-  UI.workIntervalRange.addEventListener('change',()=>{
-    setWorkIntervalMinutes(Number(UI.workIntervalRange.value));
+  UI.visualIntervalRange.addEventListener('change',()=>{
+    setVisualIntervalMinutes(Number(UI.visualIntervalRange.value));
+  });
+  UI.postureIntervalRange.addEventListener('input',()=>{
+    UI.postureIntervalValue.textContent=`${UI.postureIntervalRange.value}${t('settings.minutes')}`;
+  });
+  UI.postureIntervalRange.addEventListener('change',()=>{
+    setPostureIntervalMinutes(Number(UI.postureIntervalRange.value));
   });
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape'&&UI.pModal.classList.contains('active'))closePractice();
@@ -407,7 +451,7 @@ async function toggleNotifications(){
   }
   updateNotificationButton();
 }
-async function sendNotification(title,body,tag){
+async function sendNotification(title,body,tag,data={}){
   if(!notificationsEnabled||notificationStatus()!=='granted')return;
   const options={
     body,
@@ -415,7 +459,7 @@ async function sendNotification(title,body,tag){
     renotify:true,
     icon:'icons/icon.svg',
     badge:'icons/icon.svg',
-    data:{ url:'./index.html' }
+    data:{ url:'./index.html',...data }
   };
   const registration=serviceWorkerReady?await serviceWorkerReady:null;
   if(registration&&registration.showNotification){
@@ -429,7 +473,7 @@ async function sendNotification(title,body,tag){
     const notice=new Notification(title,options);
     notice.onclick=()=>{
       window.focus();
-      handleNotificationClick({ tag });
+      handleNotificationClick({ tag,...options.data });
       notice.close();
     };
     if(document.visibilityState==='visible')setTimeout(()=>notice.close(),6000);
@@ -448,16 +492,21 @@ function handleNotificationClick(data={}){
   updateUI();
 }
 function handleLaunchAction(){
-  if(location.hash!=='#pause-due')return;
+  if(!location.hash.startsWith('#pause-due'))return;
+  const requestedKind=location.hash.split('=')[1];
+  const launchKind=REMINDER_KINDS.includes(requestedKind)?requestedKind:'visual';
   history.replaceState(null,'',location.pathname+location.search);
   if(!inBreak&&!breakPending){
+    if(running)syncWorkLeft();
     stopWorkTicker();
     running=false;
-    workEndAt=null;
+    clearReminderDeadlines();
+    reminderLeft[launchKind]=0;
     workLeft=0;
     breaksDue=Math.max(breaksDue,1);
     scheduledDueOpen=true;
-    pendingPick=selectNextExercise();
+    pendingReminderKind=launchKind;
+    pendingPick=selectNextExercise(pendingReminderKind);
     breakPending=true;
     showPendingBreak();
     UI.startBtn.textContent=t('action.startBreak');
@@ -472,9 +521,9 @@ function announceInTitle(text){
 function clearTitleAnnouncement(){
   if(!document.hidden)document.title=BASE_TITLE;
 }
-function notifyBreakDue(ex){
+function notifyBreakDue(ex,kind){
   announceInTitle(t('title.breakReady'));
-  sendNotification(t('notify.breakDueTitle'), `${t('notify.breakDueBody')}${exerciseName(ex)}.`, 'visupause-break-due');
+  sendNotification(t('notify.breakDueTitle'), `${t('notify.breakDueBody')}${exerciseName(ex)}.`, 'visupause-break-due', { reminderKind:kind });
 }
 function notifyBreakEnd(){
   announceInTitle(t('title.breakDone'));
@@ -515,24 +564,31 @@ function setBreakDisplayMode(mode){
   settings.breakDisplayMode=mode==='fullscreen'?'fullscreen':'page';
   persistSettings();
 }
-function setWorkIntervalMinutes(minutes){
-  const previousWorkSec=workSec;
-  settings.workIntervalMinutes=minutes;
+function setVisualIntervalMinutes(minutes){setReminderInterval('visual',minutes);}
+function setPostureIntervalMinutes(minutes){setReminderInterval('posture',minutes);}
+function setReminderInterval(kind,minutes){
+  const settingKey=kind==='posture'?'postureIntervalMinutes':'visualIntervalMinutes';
+  const previousSeconds=kind==='posture'?postureSec:visualSec;
+  if(running&&!inBreak&&!breakPending)syncWorkLeft();
+  const previousLeft=reminderLeft[kind];
+  settings[settingKey]=minutes;
   settings=normalizeSettings(settings);
   if(!devMode){
-    const nextWorkSec=settings.workIntervalMinutes*60;
-    if(running&&!inBreak&&!breakPending)syncWorkLeft();
-    const elapsed=Math.max(0,previousWorkSec-workLeft);
-    workSec=nextWorkSec;
+    const nextSeconds=settings[settingKey]*60;
+    const elapsed=Math.max(0,previousSeconds-previousLeft);
+    if(kind==='posture')postureSec=nextSeconds;
+    else{visualSec=nextSeconds;workSec=nextSeconds;}
     if(!inBreak&&!breakPending){
-      workLeft=Math.max(0,nextWorkSec-elapsed);
-      if(running)workEndAt=Date.now()+workLeft*1000;
+      reminderLeft[kind]=Math.max(0,nextSeconds-elapsed);
+      updateDerivedWorkLeft();
+      if(running)setReminderDeadlines();
     }
   }
   persistSettings();
-  if(!devMode&&running&&!inBreak&&!breakPending&&workLeft<=0){
+  const dueKind=getDueReminderKind();
+  if(!devMode&&running&&!inBreak&&!breakPending&&dueKind){
     closeSettings();
-    queueBreak();
+    queueBreak(dueKind);
   }
 }
 function setLanguage(language){
@@ -552,9 +608,10 @@ function calcScore(){
   });
 }
 function setArc(node,circ,pct){node.setAttribute('stroke-dashoffset',(circ*(1-Math.max(0,Math.min(1,pct)))).toFixed(1));}
-function getUpcomingExercise(){
-  const eligible=getEligibleExercises();
-  return eligible[exOrder[exIdx%eligible.length]]||eligible[0]||EX[0];
+function getUpcomingExercise(kind=getNextReminderKind()){
+  const eligible=getEligibleExercises(kind);
+  const queue=exerciseQueues[kind]||exerciseQueues.all;
+  return eligible[queue.order[queue.cursor%eligible.length]]||eligible[0]||EX[0];
 }
 function getCoachPlan(minsSince,nextEx){
   const missedBreaks=Math.max(0,breaksDue-breaksTaken);
@@ -581,7 +638,7 @@ function getCoachPlan(minsSince,nextEx){
     level:t('coach.priority'),
     title:t('coach.priorityTitle'),
     copy:t('coach.priorityCopy'),
-    next:getEligibleExercises().find(ex=>ex.pauseMode==='offscreen')||nextEx
+    next:getEligibleExercises('visual')[0]||nextEx
   };
   if(minsSince>=intervalMinutes*.75)return {
     level:t('coach.soon'),
@@ -621,7 +678,8 @@ function updateUI(){
   UI.scoreStatus.textContent=breakPending?t('score.pending'):active?localizedScoreLabel(score):t('score.ready');
   UI.mBreak.textContent=`${breaksTaken} / ${breaksDue}`;
   UI.mBreakBar.style.width=(breaksDue===0?0:breaksTaken/breaksDue*100)+'%';
-  UI.mBreakSub.textContent=breakPending?t('metric.pending'):breaksDue===0?t('metric.nextBreak')+fmt(workLeft):`${Math.round(Math.max(0,breaksTaken/Math.max(1,breaksDue)*100))}${t('metric.respected')}`;
+  const nextReminderKind=breakPending?pendingReminderKind:getNextReminderKind();
+  UI.mBreakSub.textContent=breakPending?t('metric.pending'):`${t('timer.'+nextReminderKind)} · ${t('metric.nextBreak')}${fmt(workLeft)}`;
   const minsS=Math.round(minsSince);
   UI.mFatigue.textContent=minsS+t('time.minute');
   UI.mFatigueBar.style.width=Math.min(minsSince/intervalMinutes*100,100)+'%';
@@ -631,11 +689,12 @@ function updateUI(){
     UI.timerDisp.textContent=fmt(workLeft);
     UI.timerDisp.classList.toggle('warn',breakPending||(workLeft<=60&&running));
   }
+  UI.timerNext.textContent=t('timer.'+nextReminderKind);
   if(breakPending)UI.startBtn.textContent=t('action.startBreak');
   const mins=Math.floor((Date.now()-sessionStart)/60000);
   UI.sTime.textContent=mins<60?mins+t('time.minute'):Math.floor(mins/60)+t('time.hour')+(mins%60)+t('time.minute');
   UI.sBreaks.textContent=breaksTaken;
-  const nextEx=getUpcomingExercise();
+  const nextEx=getUpcomingExercise(nextReminderKind);
   UI.sExercise.textContent=nextEx?nextEx.ico:'—';
   const coachPlan=getCoachPlan(minsSince,nextEx);
   UI.coachLevel.textContent=coachPlan.level;
@@ -654,8 +713,43 @@ function remainingSeconds(deadline){
   return Math.max(0,Math.ceil((deadline-Date.now())/1000));
 }
 function syncWorkLeft(){
-  if(running&&!inBreak&&workEndAt)workLeft=remainingSeconds(workEndAt);
+  if(running&&!inBreak){
+    REMINDER_KINDS.forEach(kind=>{
+      if(reminderEndAt[kind])reminderLeft[kind]=remainingSeconds(reminderEndAt[kind]);
+    });
+    updateDerivedWorkLeft();
+  }
   return workLeft;
+}
+function updateDerivedWorkLeft(){
+  const activeKinds=getActiveReminderKinds();
+  workLeft=activeKinds.length?Math.min(...activeKinds.map(kind=>reminderLeft[kind])):0;
+  return workLeft;
+}
+function getActiveReminderKinds(){
+  return REMINDER_KINDS.filter(kind=>getEligibleExercises(kind).length>0);
+}
+function getNextReminderKind(){
+  const activeKinds=getActiveReminderKinds();
+  return activeKinds.sort((a,b)=>reminderLeft[a]-reminderLeft[b])[0]||'visual';
+}
+function getDueReminderKind(){
+  const activeKinds=getActiveReminderKinds();
+  if(activeKinds.includes('visual')&&reminderLeft.visual<=0)return 'visual';
+  if(activeKinds.includes('posture')&&reminderLeft.posture<=0)return 'posture';
+  return null;
+}
+function reminderIntervalSeconds(kind){
+  if(devMode)return kind==='visual'?2:5;
+  return kind==='posture'?postureSec:visualSec;
+}
+function setReminderDeadlines(){
+  const now=Date.now();
+  const activeKinds=getActiveReminderKinds();
+  REMINDER_KINDS.forEach(kind=>{reminderEndAt[kind]=activeKinds.includes(kind)?now+reminderLeft[kind]*1000:null;});
+}
+function clearReminderDeadlines(){
+  REMINDER_KINDS.forEach(kind=>{reminderEndAt[kind]=null;});
 }
 function syncBreakLeft(){
   if(inBreak&&breakEndAt)breakLeft=remainingSeconds(breakEndAt);
@@ -672,8 +766,10 @@ function setBreakStageMode(exercise){
   UI.breakOverlay.classList.add('immersive');
   const offscreen=exercise?.pauseMode==='offscreen';
   UI.breakOverlay.classList.toggle('offscreen',offscreen);
-  UI.breakOverlay.classList.remove('look-away');
   UI.offscreenIcon.textContent=exercise?.ico||'↗';
+  const cueKind=activeBreakKind==='posture'?'posture':'visual';
+  UI.offscreenCueTitle.textContent=t(`break.${cueKind}Cue`);
+  UI.offscreenCueDetail.textContent=t('break.cuePersistent');
 }
 function scheduleAnimationResize(){
   if(inBreak&&activeBreakExercise&&activeBreakExercise.pauseMode!=='offscreen'){
@@ -729,7 +825,8 @@ function catchUpTimers(){
   }
   if(running){
     syncWorkLeft();
-    if(workLeft<=0){queueBreak();return;}
+    const dueKind=getDueReminderKind();
+    if(dueKind){queueBreak(dueKind);return;}
   }
   updateUI();
 }
@@ -744,7 +841,7 @@ function toggleTimer(){
     startWorkTicker();
   }else{
     syncWorkLeft();
-    workEndAt=null;
+    clearReminderDeadlines();
     stopWorkTicker();
     UI.startBtn.textContent=t('action.resume');
     updateUI();
@@ -752,10 +849,16 @@ function toggleTimer(){
 }
 function startWorkTicker(){
   stopWorkTicker();
-  workEndAt=Date.now()+workLeft*1000;
+  setReminderDeadlines();
   ticker=setInterval(()=>{
     syncWorkLeft();
-    if(workLeft<=0)queueBreak();
+    if(breakPending){
+      REMINDER_KINDS.filter(kind=>kind!==pendingReminderKind&&reminderLeft[kind]<=0).forEach(kind=>{reminderEndAt[kind]=null;});
+      updateUI();
+      return;
+    }
+    const dueKind=getDueReminderKind();
+    if(dueKind)queueBreak(dueKind);
     else updateUI();
   },1000);
 }
@@ -767,33 +870,38 @@ function stopBreakTicker(){
 }
 function resetTimer(){
   stopWorkTicker();stopBreakTicker();stopAllAnims();
-  clearTimeout(offscreenFadeTimer);
-  running=false;inBreak=false;breakPending=false;breakComplete=false;workLeft=workSec;breakLeft=breakSec;breakTotal=breakSec;
-  workEndAt=null;breakEndAt=null;pendingPick=null;scheduledDueOpen=false;
+  running=false;inBreak=false;breakPending=false;breakComplete=false;breakLeft=breakSec;breakTotal=breakSec;
+  reminderLeft={ visual:reminderIntervalSeconds('visual'),posture:reminderIntervalSeconds('posture') };
+  updateDerivedWorkLeft();
+  clearReminderDeadlines();breakEndAt=null;pendingPick=null;pendingReminderKind=null;scheduledDueOpen=false;
   UI.startBtn.textContent=t('action.start');
-  UI.breakOverlay.classList.remove('active','pending','complete','immersive','offscreen','look-away');
+  UI.breakOverlay.classList.remove('active','pending','complete','immersive','offscreen');
   UI.breakOverlay.setAttribute('aria-hidden','true');
   hideBreakNudge();
-  activeBreakExercise=null;activeBreakLarge=false;
+  activeBreakExercise=null;activeBreakKind=null;activeBreakLarge=false;
   syncOverlayState();
   updateUI();
 }
 
 // ═══ BREAK ═════════════════════════════════════════════════════
-function queueBreak(){
+function queueBreak(kind=getDueReminderKind()||getNextReminderKind()){
   if(breakPending||inBreak)return;
-  stopWorkTicker();
-  running=false;breakPending=true;workEndAt=null;workLeft=0;
+  if(running)syncWorkLeft();
+  if(pendingReminderKind&&pendingReminderKind!==kind)pendingPick=null;
+  breakPending=true;pendingReminderKind=kind;workLeft=0;
+  reminderEndAt[kind]=null;
   if(!scheduledDueOpen){breaksDue++;scheduledDueOpen=true;}
-  pendingPick=pendingPick||selectNextExercise();
-  notifyBreakDue(pendingPick.exercise);
+  pendingPick=pendingPick||selectNextExercise(kind);
+  notifyBreakDue(pendingPick.exercise,kind);
   showPendingBreak();
   UI.startBtn.textContent=t('action.startBreak');
   addHistPoint();
   updateUI();
 }
 function showPendingBreak(){
-  const ex=pendingPick?.exercise||getUpcomingExercise();
+  const kind=pendingReminderKind||getNextReminderKind();
+  const ex=pendingPick?.exercise||getUpcomingExercise(kind);
+  UI.nudgeTitle.textContent=t(`nudge.${kind}Title`);
   UI.nudgeExercise.textContent=`${exerciseName(ex)} · ${exText(ex,'tip')}`;
   UI.breakNudge.classList.add('active');
   UI.breakNudge.setAttribute('aria-hidden','false');
@@ -806,10 +914,13 @@ function hideBreakNudge(){
 }
 function snoozeBreak(){
   if(!breakPending||inBreak)return;
+  syncWorkLeft();
+  const kind=pendingReminderKind||'visual';
   breakPending=false;
   running=true;
-  workLeft=devMode?2:5*60;
-  workEndAt=null;
+  reminderLeft[kind]=devMode?2:5*60;
+  REMINDER_KINDS.filter(item=>item!==kind&&reminderLeft[item]<=0).forEach(item=>{reminderLeft[item]=OVERLAP_GRACE_SECONDS;});
+  updateDerivedWorkLeft();
   hideBreakNudge();
   UI.startBtn.textContent=t('action.pause');
   startWorkTicker();
@@ -819,22 +930,26 @@ function startPendingBreak(){
   if(!breakPending)return;
   closePractice();
   const picked=pendingPick;
+  const kind=pendingReminderKind||picked?.exercise?.reminderKind||'visual';
   breakPending=false;
-  pendingPick=null;
+  pendingPick=null;pendingReminderKind=null;
   hideBreakNudge();
-  startBreak({ picked, countDue:false });
+  startBreak({ picked, kind, countDue:false });
 }
 function startBreak(options={}){
   const { countDue=true, picked=null } = options;
+  const kind=options.kind||picked?.exercise?.reminderKind||getNextReminderKind();
+  if(running)syncWorkLeft();
   stopWorkTicker();stopBreakTicker();running=false;inBreak=true;extUsed=false;
-  workEndAt=null;
+  clearReminderDeadlines();
   if(countDue){breaksDue++;scheduledDueOpen=true;}
-  const ex=chooseNextExercise(picked);
+  const ex=chooseNextExercise(picked,kind);
   const exerciseSeconds=Number.parseInt(ex.dur,10);
   breakComplete=false;breakLeft=breakTotal=devMode?4:(Number.isFinite(exerciseSeconds)?exerciseSeconds:20);
-  activeBreakExercise=ex;
+  activeBreakExercise=ex;activeBreakKind=kind;
   setBreakStageMode(ex);
-  lastBreakTime=Date.now();
+  if(kind==='posture')lastPostureBreakTime=Date.now();
+  else{lastVisualBreakTime=Date.now();lastBreakTime=lastVisualBreakTime;}
   breakEndAt=Date.now()+breakLeft*1000;
   const cat=CATS[ex.cat];
   UI.bCat.textContent=catLabel(ex.cat);UI.bCat.style.color=cat.color;
@@ -854,10 +969,7 @@ function startBreak(options={}){
   hideBreakNudge();
   syncOverlayState();
   requestDefaultFullscreen();
-  clearTimeout(offscreenFadeTimer);
-  if(ex.pauseMode==='offscreen'){
-    offscreenFadeTimer=setTimeout(()=>UI.breakOverlay.classList.add('look-away'),3800);
-  }else{
+  if(ex.pauseMode==='screen'){
     setTimeout(renderBreakAnimation,40);
   }
   breakTicker=setInterval(()=>{
@@ -872,28 +984,31 @@ function startManualBreak(){
   if(breakPending){startPendingBreak();return;}
   closePractice();
   const picked=pendingPick;
-  pendingPick=null;
-  startBreak({ picked, countDue:!scheduledDueOpen });
+  const kind=pendingReminderKind||picked?.exercise?.reminderKind||getNextReminderKind();
+  pendingPick=null;pendingReminderKind=null;
+  startBreak({ picked, kind, countDue:!scheduledDueOpen });
 }
 function startTestExercise(i){
   openPractice(i,true);
 }
-function selectNextExercise(){
+function selectNextExercise(kind=getNextReminderKind()){
   const fatigueMinutes=(Date.now()-lastBreakTime)/60000;
-  const eligible=getEligibleExercises();
+  const eligible=getEligibleExercises(kind);
+  const queue=exerciseQueues[kind]||exerciseQueues.all;
   return pickExercise({
     exercises:eligible,
-    order:exOrder,
-    cursor:exIdx,
+    order:queue.order,
+    cursor:queue.cursor,
     lastCategory:lastExerciseCat,
     fatigueMinutes,
     missedBreaks:Math.max(0,breaksDue-breaksTaken)
   });
 }
-function chooseNextExercise(picked){
-  picked=picked||selectNextExercise();
-  exOrder=picked.order;
-  exIdx=picked.cursor;
+function chooseNextExercise(picked,kind=getNextReminderKind()){
+  picked=picked||selectNextExercise(kind);
+  const queue=exerciseQueues[kind]||exerciseQueues.all;
+  queue.order=picked.order;
+  queue.cursor=picked.cursor;
   lastExerciseCat=picked.exercise.cat;
   exerciseDiversity.add(picked.exercise.cat);
   return picked.exercise;
@@ -901,13 +1016,16 @@ function chooseNextExercise(picked){
 function endBreak(auto=false){
   if(!inBreak)return;
   stopBreakTicker();stopAllAnims();
-  clearTimeout(offscreenFadeTimer);
-  UI.breakOverlay.classList.remove('active','complete','immersive','offscreen','look-away');
+  UI.breakOverlay.classList.remove('active','complete','immersive','offscreen');
   UI.breakOverlay.setAttribute('aria-hidden','true');
   if(document.fullscreenElement===UI.breakOverlay)document.exitFullscreen?.().catch(()=>{});
-  activeBreakExercise=null;activeBreakLarge=false;
+  const completedKind=activeBreakKind||'visual';
+  reminderLeft[completedKind]=reminderIntervalSeconds(completedKind);
+  REMINDER_KINDS.filter(kind=>kind!==completedKind&&reminderLeft[kind]<=0).forEach(kind=>{reminderLeft[kind]=OVERLAP_GRACE_SECONDS;});
+  updateDerivedWorkLeft();
+  activeBreakExercise=null;activeBreakKind=null;activeBreakLarge=false;
   breakEndAt=null;scheduledDueOpen=false;
-  inBreak=false;breakComplete=false;breaksTaken++;workLeft=workSec;running=true;
+  inBreak=false;breakComplete=false;breaksTaken++;running=true;
   syncOverlayState();
   UI.startBtn.textContent=t('action.pause');
   UI.endBreakBtn.textContent=t('action.endBreak');
@@ -924,8 +1042,6 @@ function completeBreakTimer(){
   if(breakComplete)return;
   breakComplete=true;breakLeft=0;breakEndAt=null;
   stopBreakTicker();
-  clearTimeout(offscreenFadeTimer);
-  UI.breakOverlay.classList.remove('look-away');
   UI.breakOverlay.classList.add('complete');
   UI.brTxt.textContent='✓';
   UI.brProg.setAttribute('stroke-dashoffset','213.6');
@@ -987,7 +1103,11 @@ function closePractice(){
 
 // ═══ DEV MODE ══════════════════════════════════════════════════
 function toggleDev(){
-  devMode=!devMode;workSec=devMode?2:settings.workIntervalMinutes*60;breakSec=devMode?4:20;
+  devMode=!devMode;
+  visualSec=settings.visualIntervalMinutes*60;
+  postureSec=settings.postureIntervalMinutes*60;
+  workSec=visualSec;
+  breakSec=devMode?4:20;
   UI.devBtn.classList.toggle('on',devMode);
   UI.devBadge.classList.toggle('show',devMode);
   UI.devBadgeTimer.style.display=devMode?'inline-block':'none';
@@ -1081,7 +1201,7 @@ function addHistPoint(){
 function resetSession(){
   if(!confirm(t('reset.confirm')))return;
   scoreHistory=[];saveHistory(scoreHistory);breaksTaken=0;breaksDue=0;sessionStart=Date.now();
-  smoothScore=100;lastBreakTime=Date.now();exIdx=0;exOrder=shuffleIndices(getEligibleExercises().length);exerciseDiversity=new Set();lastExerciseCat=null;
+  smoothScore=100;lastBreakTime=Date.now();lastVisualBreakTime=lastBreakTime;lastPostureBreakTime=lastBreakTime;resetExerciseQueues();exerciseDiversity=new Set();lastExerciseCat=null;
   drawChart();
   resetTimer();
 }

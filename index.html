@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
     <div class="approach-copy">
       <span class="approach-kicker" data-i18n="approach.kicker">Nouvelle approche</span>
       <h1 id="approachTitle" data-i18n="approach.title">La meilleure pause visuelle se passe loin de cet écran.</h1>
-      <p data-i18n="approach.copy">VisuPause te prévient sans bloquer ton travail, puis s’efface lorsque tu choisis de faire une pause.</p>
+      <p data-i18n="approach.copy">VisuPause distingue les regards au loin fréquents des rappels posturaux plus espacés, sans bloquer ton travail.</p>
     </div>
     <div class="approach-principles">
       <div><span>01</span><strong data-i18n="approach.distance">Regarder réellement au loin</strong></div>
@@ -102,9 +102,10 @@
       <hr class="divider">
       <div class="timer-block">
         <div class="timer-lbl-row">
-          <span class="mlabel" data-i18n="timer.label">⏱ Minuteur de pause</span>
+          <span class="mlabel" data-i18n="timer.label">⏱ Prochain rappel</span>
           <span class="dev-badge" id="devBadgeTimer" style="display:none">⚡ 2s</span>
         </div>
+        <div class="timer-next" id="timerNext">Pause visuelle · regarder loin</div>
         <div class="timer-disp" id="timerDisp">20:00</div>
         <div class="timer-btns">
           <button class="tbtn pri" id="startBtn" data-action="toggle-timer">▶ Démarrer</button>
@@ -169,8 +170,8 @@
     <canvas id="breakCanvas" style="display:block;width:100%;height:100%;"></canvas>
     <div class="offscreen-cue" id="offscreenCue" aria-hidden="true">
       <span class="offscreen-icon" id="offscreenIcon">↗</span>
-      <strong data-i18n="break.lookAway">Lis la consigne, puis quitte l’écran</strong>
-      <small data-i18n="break.cueFades">L’interface s’efface dans quelques secondes.</small>
+      <strong id="offscreenCueTitle" data-i18n="break.visualCue">Regarde réellement au loin</strong>
+      <small id="offscreenCueDetail" data-i18n="break.cuePersistent">La consigne reste visible pendant toute la pause.</small>
     </div>
   </div>
   <div class="b-cat" id="bCat"></div>
@@ -231,16 +232,32 @@
         </div>
       </section>
       <section class="settings-section">
-        <div class="settings-row-head">
-          <label class="settings-label" for="workIntervalRange" data-i18n="settings.interval">Temps entre les pauses</label>
-          <span class="interval-badge" data-i18n="settings.intervalRecommended">Repère : 20 min</span>
+        <div class="settings-label" data-i18n="settings.rhythms">Rythme des rappels</div>
+        <div class="interval-setting">
+          <div class="settings-row-head">
+            <label class="interval-title" for="visualIntervalRange" data-i18n="settings.visualInterval">Pause visuelle · regarder loin</label>
+            <span class="interval-badge" data-i18n="settings.visualRecommended">Repère : 20 min</span>
+          </div>
+          <div class="interval-control">
+            <input id="visualIntervalRange" type="range" min="10" max="30" step="5" value="20" aria-describedby="visualIntervalHelp">
+            <output id="visualIntervalValue" for="visualIntervalRange">20 min</output>
+          </div>
+          <div class="interval-scale" aria-hidden="true"><span>10 min</span><span>30 min</span></div>
+          <div class="settings-sub" id="visualIntervalHelp" data-i18n="settings.visualHelp">Un rappel fréquent pour quitter la vision de près et regarder une distance réelle.</div>
         </div>
-        <div class="interval-control">
-          <input id="workIntervalRange" type="range" min="5" max="60" step="5" value="20" aria-describedby="workIntervalHelp">
-          <output id="workIntervalValue" for="workIntervalRange">20 min</output>
+        <div class="interval-setting">
+          <div class="settings-row-head">
+            <label class="interval-title" for="postureIntervalRange" data-i18n="settings.postureInterval">Mobilité et posture</label>
+            <span class="interval-badge" data-i18n="settings.postureRecommended">Repère : 45 min</span>
+          </div>
+          <div class="interval-control">
+            <input id="postureIntervalRange" type="range" min="30" max="90" step="15" value="45" aria-describedby="postureIntervalHelp">
+            <output id="postureIntervalValue" for="postureIntervalRange">45 min</output>
+          </div>
+          <div class="interval-scale" aria-hidden="true"><span>30 min</span><span>90 min</span></div>
+          <div class="settings-sub" id="postureIntervalHelp" data-i18n="settings.postureHelp">Un rappel distinct et plus espacé pour changer de position doucement.</div>
         </div>
-        <div class="interval-scale" aria-hidden="true"><span>5 min</span><span>60 min</span></div>
-        <div class="settings-sub" id="workIntervalHelp" data-i18n="settings.intervalHelp">Vingt minutes est un repère courant, pas un seuil médical. Choisis un rythme compatible avec ta concentration.</div>
+        <div class="settings-sub" data-i18n="settings.rhythmsHelp">Ces valeurs sont des repères de confort réglables, pas des seuils médicaux.</div>
       </section>
       <section class="settings-section">
         <div class="settings-row-head">
@@ -278,12 +295,12 @@
   </div>
 </div>
 
-<script src="src/exercises.js?v=11"></script>
-<script src="src/animations.js?v=11"></script>
-<script src="src/score.js?v=11"></script>
-<script src="src/selector.js?v=11"></script>
-<script src="src/storage.js?v=11"></script>
-<script src="src/i18n.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="src/exercises.js?v=12"></script>
+<script src="src/animations.js?v=12"></script>
+<script src="src/score.js?v=12"></script>
+<script src="src/selector.js?v=12"></script>
+<script src="src/storage.js?v=12"></script>
+<script src="src/i18n.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

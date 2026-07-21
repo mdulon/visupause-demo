@@ -1,21 +1,21 @@
-const CACHE_NAME = 'visupause-pro-v11';
+const CACHE_NAME = 'visupause-pro-v12';
 const APP_SHELL = [
   './',
   './index.html',
   './privacy.html',
   './terms.html',
-  './styles.css?v=11',
-  './app.js?v=11',
+  './styles.css?v=12',
+  './app.js?v=12',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './src/exercises.js?v=11',
-  './src/animations.js?v=11',
-  './src/score.js?v=11',
-  './src/selector.js?v=11',
-  './src/storage.js?v=11',
-  './src/i18n.js?v=11'
+  './src/exercises.js?v=12',
+  './src/animations.js?v=12',
+  './src/score.js?v=12',
+  './src/selector.js?v=12',
+  './src/storage.js?v=12',
+  './src/i18n.js?v=12'
 ];
 
 self.addEventListener('install', event => {
@@ -68,7 +68,10 @@ self.addEventListener('fetch', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || './index.html', self.location.href);
-  if (event.notification.tag === 'visupause-break-due') targetUrl.hash = 'pause-due';
+  const reminderKind = ['visual', 'posture'].includes(event.notification.data?.reminderKind)
+    ? event.notification.data.reminderKind
+    : 'visual';
+  if (event.notification.tag === 'visupause-break-due') targetUrl.hash = `pause-due=${reminderKind}`;
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       const sameAppClient = clientList.find(client => client.url.startsWith(self.registration.scope));
@@ -76,6 +79,7 @@ self.addEventListener('notificationclick', event => {
         sameAppClient.postMessage({
           type: 'VISUPAUSE_NOTIFICATION_CLICK',
           tag: event.notification.tag,
+          reminderKind,
           url: targetUrl.href
         });
         return sameAppClient.focus();

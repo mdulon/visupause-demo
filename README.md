@@ -1,6 +1,6 @@
 # VisuPause Pro Demo
 
-Public demonstration build of VisuPause Pro, a focus-friendly break PWA. The default rotation now favors real distant gaze, passive rest, and gentle posture changes; on-screen visual training remains optional.
+Public demonstration build of VisuPause Pro, a focus-friendly break PWA. Instructions now remain visible throughout each exercise. Distant-gaze reminders run on a frequent 20-minute default rhythm, while posture reminders use a separate 45-minute rhythm; both are adjustable and on-screen visual training remains optional.
 
 ## Open the demo
 

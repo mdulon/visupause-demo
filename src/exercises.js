@@ -65,20 +65,20 @@ const EX = [
   makeExercise('shoulder-reset', 'neck', '⌁', 'Épaules arrière', '30 sec', 'shoulder', 'Reset postural', 'Roule doucement les épaules vers l’arrière puis relâche la nuque et la mâchoire.', 'Pense “large et bas” plutôt que “fort et haut”.', 'Prudence')
 ];
 
-// Only passive, real-distance and posture breaks enter the automatic rotation.
-// Screen-following exercises remain available in the library as optional practice.
-const DEFAULT_BREAK_IDS = new Set([
-  'distance-gaze', 'deep-sky', 'blink', 'blink-tempo', 'breath-look', 'stillness', 'dark-rest',
-  'neck-turns', 'neck-tilts', 'chin-nod', 'shoulder-reset'
-]);
-const OFFSCREEN_IDS = new Set([
-  'distance-gaze', 'deep-sky', 'blink', 'blink-tempo', 'breath-look', 'stillness', 'dark-rest',
-  'neck-turns', 'neck-tilts', 'chin-nod', 'shoulder-reset'
-]);
+// The automatic schedule has two distinct rhythms: real-distance visual breaks
+// and less frequent posture reminders. Other practices stay available on demand.
+const VISUAL_REMINDER_IDS = new Set(['distance-gaze', 'deep-sky', 'breath-look']);
+const POSTURE_REMINDER_IDS = new Set(['neck-turns', 'neck-tilts', 'chin-nod', 'shoulder-reset']);
+const DEFAULT_BREAK_IDS = new Set([...VISUAL_REMINDER_IDS, ...POSTURE_REMINDER_IDS]);
 
 EX.forEach(exercise => {
   exercise.defaultEnabled = DEFAULT_BREAK_IDS.has(exercise.id);
-  exercise.pauseMode = OFFSCREEN_IDS.has(exercise.id) ? 'offscreen' : 'screen';
+  exercise.reminderKind = VISUAL_REMINDER_IDS.has(exercise.id)
+    ? 'visual'
+    : POSTURE_REMINDER_IDS.has(exercise.id)
+      ? 'posture'
+      : null;
+  exercise.pauseMode = exercise.reminderKind ? 'offscreen' : 'screen';
 });
 
 window.VisuData = { CATS, EX };
