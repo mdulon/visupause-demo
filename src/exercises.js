@@ -28,9 +28,9 @@ function makeExercise(id, cat, ico, name, dur, anim, source, desc, tip, evidence
 
 const EX = [
   makeExercise('distance-gaze', 'relaxation', '🔭', 'Regard lointain', '20 sec', 'depth', 'Pause de vision rapprochée', 'Détourne-toi de l’écran et regarde un point réellement éloigné, idéalement à 6 mètres ou davantage.', 'Ne cherche pas un détail précis : laisse simplement la mise au point se relâcher.', 'Repère'),
-  makeExercise('deep-sky', 'relaxation', '🪟', 'Regard par la fenêtre', '30 sec', 'depth', 'Changement de distance', 'Regarde dehors et laisse ton regard passer entre plusieurs plans éloignés, sans cible imposée.', 'Une vue lointaine réelle compte davantage qu’une illusion de profondeur sur l’écran.', 'Repère'),
+  makeExercise('deep-sky', 'relaxation', '🪟', 'Regard par la fenêtre', '30 sec', 'depth', 'Changement de distance', 'Regarde dehors et laisse ton regard passer entre plusieurs plans éloignés, sans cible imposée.', 'Choisis une vue extérieure confortable et laisse ton regard parcourir la distance.', 'Repère'),
   makeExercise('palming', 'relaxation', '🤲', 'Palming', '30 sec', 'palm', 'Pratique de confort', 'Couvre doucement les yeux fermés avec les paumes, sans pression.', 'Cherche le noir et la chaleur, jamais la compression.', 'Prudence'),
-  makeExercise('green-drift', 'relaxation', '🌿', 'Dérive verte', '30 sec', 'nature', 'Restauration attentionnelle', 'Laisse le regard dériver sur un mouvement organique et doux.', 'C’est un exercice de repos, pas de performance.', 'Modéré'),
+  makeExercise('green-drift', 'relaxation', '🌿', 'Dérive verte', '30 sec', 'nature', 'Restauration attentionnelle', 'Laisse le regard dériver sur un mouvement organique et doux.', 'Laisse le regard dériver sans chercher à suivre précisément.', 'Modéré'),
   makeExercise('pendulum', 'relaxation', '🕰', 'Pendule', '25 sec', 'pendule', 'Rythme de relaxation', 'Suis le pendule avec un regard souple et la tête immobile.', 'Tu peux synchroniser la respiration avec le balancement.'),
 
   makeExercise('infinity', 'pursuit', '∞', 'Infini', '30 sec', 'infinity', 'Poursuite fluide', 'Suis la boucle uniquement avec les yeux.', 'La continuité compte plus que la précision.'),
@@ -40,29 +40,29 @@ const EX = [
   makeExercise('wave', 'pursuit', '〰', 'Vague', '20 sec', 'wave', 'Poursuite horizontale', 'Suis la vague comme une ligne de lecture calme.', 'Garde les épaules et la mâchoire relâchées.'),
 
   makeExercise('near-far', 'training', '↔', 'Proche-loin', '30 sec', 'nearfar', 'Souplesse accommodative', 'Alterne la mise au point entre la cible proche et la cible lointaine.', 'Attends une netteté confortable avant de changer.', 'Modéré'),
-  makeExercise('soft-focus', 'training', '◉', 'Focus doux', '25 sec', 'softfocus', 'Relâchement de focus', 'Observe le point devenir flou puis net sans forcer.', 'L’objectif est le relâchement, pas le contrôle.', 'Modéré'),
+  makeExercise('soft-focus', 'training', '◉', 'Mise au point douce', '25 sec', 'softfocus', 'Relâchement de la mise au point', 'Observe le point devenir flou puis net sans forcer.', 'Laisse le flou et la netteté alterner sans chercher à maîtriser le changement.', 'Modéré'),
   makeExercise('convergence', 'training', '◎', 'Convergence', '20 sec', 'convergence', 'Exercice de vergence', 'Suis l’objet quand il s’approche puis laisse-le repartir.', 'Arrête avant toute gêne ou vision double persistante.', 'Modéré'),
   makeExercise('spiral', 'training', '🌀', 'Spirale', '30 sec', 'spiral', 'Dynamique accommodative', 'Suis la spirale pendant qu’elle s’élargit puis se resserre.', 'En cas de vertige, arrête et prends une pause passive.'),
-  makeExercise('brock', 'training', '🔗', 'Brock string', '30 sec', 'brock', 'Repère orthoptique', 'Déplace l’attention perle après perle avec la tête bien fixe.', 'C’est une version légère de confort, pas un traitement médical.', 'Modéré'),
+  makeExercise('brock', 'training', '🔗', 'Corde de Brock', '30 sec', 'brock', 'Repère orthoptique', 'Déplace l’attention perle après perle avec la tête bien fixe.', 'Arrête si une gêne apparaît ou si la vision double persiste.', 'Modéré'),
 
   makeExercise('clock-saccade', 'saccade', '⚡', 'Saccades horloge', '20 sec', 'saccade', 'Pratique saccadique', 'Saute de point en point uniquement avec les yeux.', 'Des sauts courts et propres suffisent.'),
   makeExercise('star-saccade', 'saccade', '⭐', 'Saccades étoile', '20 sec', 'star', 'Saccades amples', 'Trace l’étoile de point en point.', 'Ajoute une relaxation juste après si besoin.'),
   makeExercise('cardinal', 'saccade', '✛', 'Directions cardinales', '25 sec', 'cardinal', 'Mobilité directionnelle', 'Pars du centre, va dans la direction, puis reviens au centre.', 'Une amplitude confortable suffit.'),
   makeExercise('blink', 'saccade', '👁', 'Clignement complet', '30 sec', 'blink', 'Recommandations TFOS', 'Cligne lentement et complètement, puis garde les yeux fermés un instant.', 'Ne serre jamais les paupières.', 'Fort'),
-  makeExercise('blink-tempo', 'saccade', '◷', 'Tempo de clignement', '25 sec', 'blink', 'Complétude du clignement', 'Alterne des clignements complets lents et moyens.', 'L’objectif est la fermeture complète, pas la vitesse.', 'Fort'),
+  makeExercise('blink-tempo', 'saccade', '◷', 'Tempo de clignement', '25 sec', 'blink', 'Complétude du clignement', 'Alterne des clignements complets lents et moyens.', 'Ferme complètement les paupières à chaque clignement.', 'Fort'),
 
   makeExercise('peripheral-halo', 'peripheral', '◌', 'Halo périphérique', '20 sec', 'peripheral', 'Ouverture attentionnelle', 'Garde le centre fixe et remarque les halos autour.', 'Ne poursuis pas les signaux périphériques avec les yeux.', 'Modéré'),
   makeExercise('field-expansion', 'peripheral', '◎', 'Expansion du champ', '20 sec', 'field', 'Conscience périphérique', 'Maintiens le centre stable pendant que les anneaux s’ouvrent.', 'Une attention large suffit.'),
-  makeExercise('quiet-periphery', 'peripheral', '✺', 'Périphérie calme', '20 sec', 'peripheral', 'Reset visuel', 'Garde la fixation centrale et remarque doucement l’activité en bordure.', 'C’est un exercice d’attention, pas un test de netteté.', 'Modéré'),
+  makeExercise('quiet-periphery', 'peripheral', '✺', 'Périphérie calme', '20 sec', 'peripheral', 'Relâchement visuel', 'Garde la fixation centrale et remarque doucement l’activité en bordure.', 'Garde le centre net sans chercher à préciser les bords.', 'Modéré'),
 
   makeExercise('breath-look', 'breath', '◡', 'Respiration et regard lointain', '40 sec', 'breathlook', 'Pause hors écran', 'Tourne-toi vers une vue éloignée : inspire sans effort, puis expire les yeux doucement fermés.', 'Tu peux allonger l’expiration si c’est confortable.', 'Modéré'),
-  makeExercise('stillness', 'breath', '☾', 'Pause immobile', '20 sec', 'stillness', 'Micro-pause', 'Prends une pause presque immobile et relâche tout le visage.', 'Parfois, le meilleur exercice consiste à ne rien faire.', 'Prudence'),
-  makeExercise('dark-rest', 'breath', '☾', 'Repos sombre', '20 sec', 'stillness', 'Pause passive', 'Repose-toi les yeux fermés ou mi-clos avec une stimulation minimale.', 'Utile quand toute animation semble déjà trop intense.', 'Prudence'),
+  makeExercise('stillness', 'breath', '☾', 'Pause immobile', '20 sec', 'stillness', 'Micro-pause', 'Prends une pause presque immobile et relâche tout le visage.', 'Relâche le front, les paupières et la mâchoire.', 'Prudence'),
+  makeExercise('dark-rest', 'breath', '☾', 'Repos sombre', '20 sec', 'stillness', 'Pause passive', 'Repose-toi les yeux fermés ou mi-clos avec une stimulation minimale.', 'Garde les paupières relâchées et laisse le visage se détendre.', 'Prudence'),
 
   makeExercise('neck-turns', 'neck', '↔', 'Rotation douce', '30 sec', 'neckturn', 'Mobilité cervicale douce', 'Tourne lentement la tête à droite puis à gauche, sans aller en amplitude maximale.', 'Garde les épaules basses et reviens au centre entre chaque côté.', 'Prudence'),
   makeExercise('neck-tilts', 'neck', '◜', 'Inclinaisons latérales', '30 sec', 'necktilt', 'Relâchement trapèzes', 'Incline doucement l’oreille vers l’épaule, à droite puis à gauche, sans tirer avec la main.', 'Le mouvement doit rester léger, respiré et sans douleur.', 'Prudence'),
   makeExercise('chin-nod', 'neck', '⌄', 'Menton poitrine', '25 sec', 'chinnod', 'Mobilité cervicale contrôlée', 'Descends doucement le menton vers la poitrine, puis reviens à une position neutre.', 'Évite de pousser la tête vers l’arrière ; reste dans une amplitude confortable.', 'Prudence'),
-  makeExercise('shoulder-reset', 'neck', '⌁', 'Épaules arrière', '30 sec', 'shoulder', 'Reset postural', 'Roule doucement les épaules vers l’arrière puis relâche la nuque et la mâchoire.', 'Pense “large et bas” plutôt que “fort et haut”.', 'Prudence')
+  makeExercise('shoulder-reset', 'neck', '⌁', 'Épaules arrière', '30 sec', 'shoulder', 'Relâchement postural', 'Roule doucement les épaules vers l’arrière puis relâche la nuque et la mâchoire.', 'Pense “large et bas” plutôt que “fort et haut”.', 'Prudence')
 ];
 
 // The automatic schedule has two distinct rhythms: real-distance visual breaks
