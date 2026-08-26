@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#050709">
+<meta name="theme-color" content="#16212a">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>Privacy Policy — VisuPause Pro</title>
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body class="legal-page">
 <header>
@@ -26,16 +26,19 @@
   <section class="legal-card">
     <p class="legal-kicker">Privacy Policy</p>
     <h1>Politique de confidentialité</h1>
-    <p class="legal-updated">Dernière mise à jour : 29 juillet 2026</p>
+    <p class="legal-updated">Dernière mise à jour : 26 août 2026</p>
 
     <h2>Résumé</h2>
     <p>VisuPause Pro est une application web statique. Elle ne crée pas de compte, n'utilise pas d'analytics, n'envoie pas de données applicatives vers un serveur et ne charge pas de service tiers.</p>
 
     <h2>Données traitées localement</h2>
-    <p>L'application peut enregistrer localement dans ton navigateur les informations nécessaires au fonctionnement du produit : historique EyeScore, préférences de langue, rythme et sélection des pratiques, mode de fin de pause et préférence de notifications. Ces données restent dans le <code>localStorage</code> de ton navigateur.</p>
+    <p>L'application peut enregistrer localement dans ton navigateur les informations nécessaires au fonctionnement du produit : journal des pauses des sept derniers jours, préférences de langue, rythmes et sélection des pratiques, mode de fin de pause, détection d'absence et préférence de notifications. Ces données restent dans le <code>localStorage</code> de ton navigateur.</p>
 
     <h2>Notifications</h2>
-    <p>Si tu actives les notifications, ton navigateur et ton système d'exploitation gèrent l'autorisation et l'affichage. VisuPause Pro utilise cette autorisation uniquement pour annoncer les pauses et la fin d'une pause. Tu peux désactiver les notifications dans l'application ou dans les réglages du navigateur/système.</p>
+    <p>Si tu actives les notifications, ton navigateur et ton système d'exploitation gèrent l'autorisation et l'affichage. VisuPause Pro utilise cette autorisation uniquement pour annoncer les rappels de pause, avec une relance après dix minutes sans réponse. Aucune notification n'est envoyée à la fin d'une pause.</p>
+
+    <h2>Détection d'absence</h2>
+    <p>Sur les navigateurs compatibles, tu peux autoriser la détection d'inactivité de l'appareil. Elle sert uniquement à suspendre les rythmes puis à les réinitialiser à ton retour. Aucun état de présence n'est transmis à un serveur.</p>
 
     <h2>PWA et cache hors ligne</h2>
     <p>Le service worker de l'application met en cache les fichiers nécessaires pour ouvrir l'application plus rapidement et permettre une utilisation hors ligne après une première visite. Ce cache ne contient pas de données de compte ni de données de paiement.</p>
@@ -44,23 +47,26 @@
     <p>VisuPause Pro n'utilise pas de cookies, pas d'analytics, pas de publicité et pas de partage de données avec des tiers.</p>
 
     <h2>Contrôle de tes données</h2>
-    <p>Tu peux effacer les données de VisuPause Pro en utilisant le bouton de réinitialisation de session dans l'application et/ou en supprimant les données du site dans les réglages de ton navigateur.</p>
+    <p>Le bouton de réinitialisation remet à zéro la session en cours. Tu peux effacer le journal et toutes les préférences en supprimant les données du site dans les réglages de ton navigateur.</p>
 
   </section>
 
   <section class="legal-card" lang="en">
     <p class="legal-kicker">English</p>
     <h1>Privacy Policy</h1>
-    <p class="legal-updated">Last updated: July 29, 2026</p>
+    <p class="legal-updated">Last updated: August 26, 2026</p>
 
     <h2>Summary</h2>
     <p>VisuPause Pro is a static web application. It does not create accounts, use analytics, send app data to a server, or load third-party services.</p>
 
     <h2>Local data</h2>
-    <p>The app may store locally in your browser the information needed to run the product: EyeScore history, language preference, reminder rhythm and practice selection, break-ending mode, and notification preference. This data remains in your browser's <code>localStorage</code>.</p>
+    <p>The app may store locally in your browser the information needed to run the product: the last seven days of break activity, language preference, reminder rhythms and practice selection, break-ending mode, away-detection preference, and notification preference. This data remains in your browser's <code>localStorage</code>.</p>
 
     <h2>Notifications</h2>
-    <p>If you enable notifications, your browser and operating system handle permission and display. VisuPause Pro uses this permission only to announce breaks and break completion. You can disable notifications in the app or in browser/system settings.</p>
+    <p>If you enable notifications, your browser and operating system handle permission and display. VisuPause Pro uses this permission only for break reminders, with one repeat after ten minutes without a response. It sends no notification when a break ends.</p>
+
+    <h2>Away detection</h2>
+    <p>On compatible browsers, you can allow device-idle detection. It is used only to pause the rhythms and restart them when you return. No presence state is sent to a server.</p>
 
     <h2>PWA and offline cache</h2>
     <p>The app service worker caches the files required to open the app faster and allow offline use after a first visit. This cache does not contain account data or payment data.</p>
@@ -69,7 +75,7 @@
     <p>VisuPause Pro uses no cookies, no analytics, no advertising, and no third-party data sharing.</p>
 
     <h2>Your control</h2>
-    <p>You can erase VisuPause Pro data by using the session reset in the app and/or deleting site data in your browser settings.</p>
+    <p>The reset button clears the current session. You can erase the journal and all preferences by deleting site data in your browser settings.</p>
 
   </section>
 </main>

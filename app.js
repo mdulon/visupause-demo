@@ -1,9 +1,9 @@
 (() => {
 const { CATS, EX } = window.VisuData;
 const { startAnim, stopAllAnims } = window.VisuAnimations;
-const { calculateEyeScore, scoreColor } = window.VisuScore;
+const { reminderProgress, rhythmState } = window.VisuRhythm;
 const { pickExercise, shuffleIndices } = window.VisuSelector;
-const { loadHistory, saveHistory, loadSettings, saveSettings } = window.VisuStorage;
+const { loadActivity, appendActivityEvent, clearLegacyHistory, loadSettings, saveSettings } = window.VisuStorage;
 const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 
 const NOTIFY_PREF_KEY='vp_notify_enabled';
@@ -15,13 +15,16 @@ const INTERVAL_LIMITS={
   posture:{ min:30,max:90,step:15 }
 };
 const OVERLAP_GRACE_SECONDS=5*60;
-const SETTINGS_VERSION=3;
+const REMINDER_REPEAT_MS=10*60*1000;
+const IDLE_THRESHOLD_MS=2*60*1000;
+const SETTINGS_VERSION=4;
 const DEFAULT_ENABLED_CATEGORIES=[...new Set(EX.filter(ex=>ex.defaultEnabled).map(ex=>ex.cat))];
 const DEFAULT_DISABLED_EXERCISES=EX.filter(ex=>!ex.defaultEnabled).map(ex=>ex.id);
 const DEFAULT_SETTINGS={
   enabledCategories:DEFAULT_ENABLED_CATEGORIES,
   disabledExercises:DEFAULT_DISABLED_EXERCISES,
   exitMode:'manual',
+  idleDetectionEnabled:true,
   visualIntervalMinutes:20,
   postureIntervalMinutes:45,
   language:'fr',
@@ -63,21 +66,21 @@ function restoreFocus(node){
 }
 
 const UI = {
-  exContainer:$('exContainer'), arcBreak:$('arcBreak'), arcSession:$('arcSession'), arcScore:$('arcScore'),
-  scoreNum:$('scoreNum'), scoreStatus:$('scoreStatus'), mBreak:$('mBreak'), mBreakBar:$('mBreakBar'),
+  exContainer:$('exContainer'), arcVisual:$('arcVisual'), arcPosture:$('arcPosture'),
+  rhythmValue:$('rhythmValue'), rhythmStatus:$('rhythmStatus'), mBreak:$('mBreak'),
   mBreakSub:$('mBreakSub'), mFatigue:$('mFatigue'), mFatigueBar:$('mFatigueBar'), mFatigueSub:$('mFatigueSub'),
-  timerDisp:$('timerDisp'), startBtn:$('startBtn'), sTime:$('sTime'), sAvg:$('sAvg'), sBreaks:$('sBreaks'),
+  timerDisp:$('timerDisp'), startBtn:$('startBtn'), sTime:$('sTime'), sNatural:$('sNatural'), sBreaks:$('sBreaks'),
   sExercise:$('sExercise'), breakOverlay:$('breakOverlay'), bCat:$('bCat'), bSrc:$('bSrc'), bTitle:$('bTitle'),
   bDesc:$('bDesc'), bTip:$('bTip'), extBtn:$('extBtn'), brTxt:$('brTxt'), brProg:$('brProg'),
   breakAnimWrap:$('breakAnimWrap'), breakCanvas:$('breakCanvas'), pModal:$('pModal'), pmCanvas:$('pmCanvas'),
   pmSource:$('pmSource'), pmName:$('pmName'), pmDur:$('pmDur'), pmDesc:$('pmDesc'), pmTip:$('pmTip'),
-  histChart:$('histChart'),
-  chartMeta:$('chartMeta'), exSectionTitle:$('exSectionTitle'), coachLevel:$('coachLevel'),
+  activityList:$('activityList'), chartMeta:$('chartMeta'), exSectionTitle:$('exSectionTitle'), coachLevel:$('coachLevel'),
   coachTitle:$('coachTitle'), coachCopy:$('coachCopy'), coachNextIcon:$('coachNextIcon'),
   coachNextText:$('coachNextText'), coachBreakBtn:$('coachBreakBtn'), notifyBtn:$('notifyBtn'),
   settingsBtn:$('settingsBtn'),
   settingsModal:$('settingsModal'), categorySettings:$('categorySettings'), exerciseSettings:$('exerciseSettings'),
   settingsSummary:$('settingsSummary'), exitModeSettings:$('exitModeSettings'),
+  idleDetectionSettings:$('idleDetectionSettings'), idleDetectionStatus:$('idleDetectionStatus'),
   languageSettings:$('languageSettings'), endBreakBtn:$('endBreakBtn'),
   visualIntervalRange:$('visualIntervalRange'), visualIntervalValue:$('visualIntervalValue'),
   postureIntervalRange:$('postureIntervalRange'), postureIntervalValue:$('postureIntervalValue'),
@@ -94,19 +97,23 @@ let reminderEndAt={ visual:null,posture:null };
 let workLeft=Math.min(reminderLeft.visual,reminderLeft.posture),breakLeft=breakSec,breakTotal=breakSec;
 let breakEndAt=null;
 let running=false,inBreak=false,breakPending=false,breakComplete=false;
-let breaksDue=0,breaksTaken=0;
+let visualBreaksTaken=0,postureBreaksTaken=0,naturalBreaksTaken=0;
 let exerciseQueues={ visual:{ order:[],cursor:0 },posture:{ order:[],cursor:0 },all:{ order:[],cursor:0 } };
 let extUsed=false;
 let ticker=null,breakTicker=null;
-let sessionStart=Date.now(),scoreHistory=loadHistory();
-let smoothScore=100,lastBreakTime=Date.now(),lastVisualBreakTime=Date.now(),lastPostureBreakTime=Date.now(),chart=null,chartResizeTimer=null;
-let lastExerciseCat=null,lastHistMinute='',exerciseDiversity=new Set(),pendingPick=null;
+let sessionId=Date.now(),sessionStarted=false,activityLog=loadActivity();
+let lastBreakTime=Date.now();
+let activeTrackedMs=0,activeTrackingStartedAt=null;
+let lastExerciseCat=null,pendingPick=null;
 let notificationsEnabled=loadNotificationPreference(),titleTimer=null;
-let activeBreakExercise=null,activeBreakKind=null,resizeTimer=null;
+let activeBreakExercise=null,activeBreakKind=null,activeBreakSource='manual',resizeTimer=null;
 let activePracticeExercise=null,practiceResizeTimer=null;
 let practiceReturnFocus=null,settingsReturnFocus=null;
-let pendingReminderKind=null,scheduledDueOpen=false;
+let pendingReminderKind=null;
+let pendingRepeatAt=null,pendingAcknowledged=false;
+let idleDetector=null,idleController=null,idlePaused=false,idleStartedAt=null,resumeAfterIdle=false,idlePermissionState='unknown';
 let settings=normalizeSettings(loadSettings());
+clearLegacyHistory();
 saveSettings(settings);
 let serviceWorkerReady=null;
 visualSec=settings.visualIntervalMinutes*60;
@@ -143,6 +150,7 @@ function normalizeSettings(raw={}){
     enabledCategories:hasActiveExercise?activeCategories:DEFAULT_SETTINGS.enabledCategories.slice(),
     disabledExercises:hasActiveExercise?disabledExercises:DEFAULT_SETTINGS.disabledExercises.slice(),
     exitMode:raw.exitMode==='auto'?'auto':'manual',
+    idleDetectionEnabled:raw.idleDetectionEnabled!==false,
     visualIntervalMinutes,
     postureIntervalMinutes,
     language:raw.language==='en'?'en':'fr',
@@ -165,7 +173,7 @@ function persistSettings(){
   renderSettings();
   applyLanguage();
   updateNotificationButton();
-  if(chart)drawChart();
+  renderActivityJournal();
   updateUI();
 }
 function getBreakCompleteLabel(){
@@ -177,9 +185,6 @@ function catLabel(catKey){return CAT_TEXT[currentLanguage()]?.[catKey]||CATS[cat
 function exText(ex,field){return EX_TEXT[currentLanguage()]?.[ex.id]?.[field]||ex[field];}
 function evidenceText(value){return EVIDENCE_TEXT[currentLanguage()]?.[value]||value;}
 function exerciseName(ex){return ex.ico+' '+exText(ex,'name');}
-function localizedScoreLabel(score){
-  return score >= 90 ? t('score.excellent') : score >= 75 ? t('score.good') : score >= 60 ? t('score.ok') : score >= 40 ? t('score.tired') : t('score.critical');
-}
 function applyLanguage(){
   document.documentElement.lang=currentLanguage();
   document.querySelectorAll('[data-i18n]').forEach(node=>{node.textContent=t(node.dataset.i18n);});
@@ -274,6 +279,16 @@ function renderSettings(){
   UI.exitModeSettings.querySelectorAll('[data-mode]').forEach(btn=>{
     btn.classList.toggle('active',btn.dataset.mode===settings.exitMode);
   });
+  UI.idleDetectionSettings.querySelectorAll('[data-mode]').forEach(btn=>{
+    btn.classList.toggle('active',(btn.dataset.mode==='on')===settings.idleDetectionEnabled);
+  });
+  const idleSupported='IdleDetector' in window&&window.isSecureContext;
+  UI.idleDetectionSettings.querySelector('[data-mode="on"]').disabled=!idleSupported;
+  UI.idleDetectionStatus.textContent=!idleSupported
+    ? t('settings.idleUnavailable')
+    : idleDetector?t('settings.idleActive')
+      : idlePermissionState==='denied'?t('settings.idleDenied')
+        : settings.idleDetectionEnabled?t('settings.idleReady'):t('settings.idleOff');
   UI.languageSettings.querySelectorAll('[data-lang]').forEach(btn=>{
     btn.classList.toggle('active',btn.dataset.lang===currentLanguage());
   });
@@ -303,11 +318,13 @@ function bindActions(){
         'reset-session':resetSession,'toggle-timer':toggleTimer,
         'reset-timer':resetTimer,'extend-break':extendBreak,'end-break':endBreak,
         'close-practice':closePractice,'start-break-now':startManualBreak,
+        'register-natural-break':()=>registerNaturalBreak({ source:'manual' }),
         'snooze-break':snoozeBreak,
         'toggle-notifications':toggleNotifications,'confirm-break-start':startPendingBreak,
         'open-settings':openSettings,
         'close-settings':closeSettings,'reset-exercise-settings':resetExerciseSettings,
         'set-exit-mode':()=>setExitMode(actionTarget.dataset.mode),
+        'set-idle-detection':()=>setIdleDetection(actionTarget.dataset.mode),
         'set-language':()=>setLanguage(actionTarget.dataset.lang)
       };
       actions[actionTarget.dataset.action]?.();
@@ -359,7 +376,10 @@ function bindActions(){
     if(e.key==='Escape'&&UI.settingsModal.classList.contains('active'))closeSettings();
     trapModalFocus(e);
   });
-  document.addEventListener('visibilitychange', catchUpTimers);
+  document.addEventListener('visibilitychange', ()=>{
+    catchUpTimers();
+    if(!document.hidden)maybeRepeatPendingReminder();
+  });
   window.addEventListener('focus', catchUpTimers);
   window.addEventListener('pageshow', catchUpTimers);
   window.addEventListener('resize', scheduleAnimationResize);
@@ -473,6 +493,7 @@ async function sendNotification(title,body,tag,data={}){
 }
 function handleNotificationClick(data={}){
   clearTitleAnnouncement();
+  if(data.tag==='visupause-break-due')clearPendingReminderAttention();
   catchUpTimers();
   if(data.tag==='visupause-break-due'&&breakPending)showPendingBreak();
   if(inBreak){
@@ -494,11 +515,12 @@ function handleLaunchAction(){
     clearReminderDeadlines();
     reminderLeft[launchKind]=0;
     workLeft=0;
-    breaksDue=Math.max(breaksDue,1);
-    scheduledDueOpen=true;
+    sessionStarted=true;
     pendingReminderKind=launchKind;
     pendingPick=selectNextExercise(pendingReminderKind);
     breakPending=true;
+    pendingAcknowledged=true;
+    pendingRepeatAt=null;
     showPendingBreak();
     UI.startBtn.textContent=t('action.startBreak');
   }
@@ -516,13 +538,26 @@ function notifyBreakDue(ex,kind){
   announceInTitle(t('title.breakReady'));
   sendNotification(t('notify.breakDueTitle'), `${t('notify.breakDueBody')}${exerciseName(ex)}.`, 'visupause-break-due', { reminderKind:kind });
 }
-function notifyBreakEnd(){
-  announceInTitle(t('title.breakDone'));
-  sendNotification(t('notify.breakEndTitle'), t('notify.breakEndBody'), 'visupause-break-end');
+function schedulePendingReminderRepeat(){
+  pendingAcknowledged=false;
+  pendingRepeatAt=Date.now()+REMINDER_REPEAT_MS;
 }
-function notifyBreakReadyToEnd(){
-  announceInTitle(t('title.breakDone'));
-  sendNotification(t('notify.breakEndTitle'), t('notify.breakReadyBody'), 'visupause-break-ready');
+function clearPendingReminderAttention(){
+  pendingRepeatAt=null;
+  pendingAcknowledged=false;
+  UI.breakNudge.classList.remove('realert');
+}
+function maybeRepeatPendingReminder(){
+  if(!breakPending||idlePaused||pendingAcknowledged||!pendingRepeatAt||Date.now()<pendingRepeatAt)return false;
+  pendingAcknowledged=true;
+  const kind=pendingReminderKind||getNextReminderKind();
+  const ex=pendingPick?.exercise||getUpcomingExercise(kind);
+  showPendingBreak();
+  UI.breakNudge.classList.remove('realert');
+  void UI.breakNudge.offsetWidth;
+  UI.breakNudge.classList.add('realert');
+  notifyBreakDue(ex,kind);
+  return true;
 }
 
 // ═══ SETTINGS ══════════════════════════════════════════════════
@@ -550,6 +585,81 @@ function resetExerciseSettings(){
 function setExitMode(mode){
   settings.exitMode=mode==='auto'?'auto':'manual';
   persistSettings();
+}
+async function setIdleDetection(mode){
+  settings.idleDetectionEnabled=mode==='on';
+  if(!settings.idleDetectionEnabled){
+    stopIdleDetection();
+    if(idlePaused)finishIdlePause();
+    persistSettings();
+    return;
+  }
+  await ensureIdleDetection(true);
+  persistSettings();
+}
+function stopIdleDetection(){
+  idleController?.abort();
+  idleController=null;
+  idleDetector=null;
+}
+async function ensureIdleDetection(requestPermission=false){
+  if(!settings.idleDetectionEnabled||idleDetector)return Boolean(idleDetector);
+  if(!('IdleDetector' in window)||!window.isSecureContext){
+    idlePermissionState='unavailable';
+    renderSettings();
+    return false;
+  }
+  try{
+    if(requestPermission){
+      idlePermissionState=await window.IdleDetector.requestPermission();
+      if(idlePermissionState!=='granted'){
+        renderSettings();
+        return false;
+      }
+    }
+    idleController=new AbortController();
+    idleDetector=new window.IdleDetector();
+    idleDetector.addEventListener('change',()=>{
+      const away=idleDetector.userState==='idle'||idleDetector.screenState==='locked';
+      if(away)beginIdlePause();
+      else finishIdlePause();
+    });
+    await idleDetector.start({ threshold:IDLE_THRESHOLD_MS,signal:idleController.signal });
+    idlePermissionState='granted';
+    renderSettings();
+    return true;
+  }catch(error){
+    stopIdleDetection();
+    idlePermissionState=error?.name==='NotAllowedError'?'denied':'unavailable';
+    renderSettings();
+    return false;
+  }
+}
+function beginIdlePause(){
+  if(idlePaused||inBreak||(!running&&!breakPending))return;
+  syncWorkLeft();
+  const idleBeganAt=Date.now()-IDLE_THRESHOLD_MS;
+  if(activeTrackingStartedAt!==null){
+    activeTrackedMs+=Math.max(0,idleBeganAt-activeTrackingStartedAt);
+    activeTrackingStartedAt=null;
+  }
+  resumeAfterIdle=running||breakPending;
+  running=false;
+  idlePaused=true;
+  idleStartedAt=idleBeganAt;
+  clearReminderDeadlines();
+  stopWorkTicker();
+  UI.startBtn.textContent=t('action.away');
+  updateUI();
+}
+function finishIdlePause(){
+  if(!idlePaused)return;
+  const durationSeconds=Math.max(0,Math.round((Date.now()-(idleStartedAt||Date.now()))/1000));
+  const shouldResume=resumeAfterIdle;
+  idlePaused=false;
+  idleStartedAt=null;
+  resumeAfterIdle=false;
+  registerNaturalBreak({ source:'idle',durationSeconds,resume:shouldResume });
 }
 function setVisualIntervalMinutes(minutes){setReminderInterval('visual',minutes);}
 function setPostureIntervalMinutes(minutes){setReminderInterval('posture',minutes);}
@@ -581,26 +691,43 @@ function setLanguage(language){
   persistSettings();
 }
 
-// ═══ SCORE ═════════════════════════════════════════════════════
-function calcScore(){
-  return calculateEyeScore({
-    breaksDue,
-    breaksTaken,
-    lastBreakTime,
-    intervalMinutes: workSec/60,
-    inBreak,
-    breakPending
-  });
-}
+// ═══ SESSION RHYTHM ════════════════════════════════════════════
 function setArc(node,circ,pct){node.setAttribute('stroke-dashoffset',(circ*(1-Math.max(0,Math.min(1,pct)))).toFixed(1));}
+function syncActiveTracking(now=Date.now()){
+  const active=running&&!inBreak&&!idlePaused;
+  if(active&&activeTrackingStartedAt===null)activeTrackingStartedAt=now;
+  if(!active&&activeTrackingStartedAt!==null){
+    activeTrackedMs+=Math.max(0,now-activeTrackingStartedAt);
+    activeTrackingStartedAt=null;
+  }
+}
+function getActiveTrackedMs(){
+  syncActiveTracking();
+  return activeTrackedMs+(activeTrackingStartedAt===null?0:Math.max(0,Date.now()-activeTrackingStartedAt));
+}
+function recordActivity(kind,source,durationSeconds){
+  const event={ at:Date.now(),kind,source,durationSeconds,sessionId };
+  activityLog=appendActivityEvent(activityLog,event);
+  renderActivityJournal();
+}
+function isToday(timestamp){
+  const date=new Date(timestamp),today=new Date();
+  return date.getFullYear()===today.getFullYear()&&date.getMonth()===today.getMonth()&&date.getDate()===today.getDate();
+}
+function todayActivity(){return activityLog.filter(event=>isToday(event.at));}
 function getUpcomingExercise(kind=getNextReminderKind()){
   const eligible=getEligibleExercises(kind);
   const queue=exerciseQueues[kind]||exerciseQueues.all;
   return eligible[queue.order[queue.cursor%eligible.length]]||eligible[0]||EX[0];
 }
 function getCoachPlan(minsSince,nextEx){
-  const missedBreaks=Math.max(0,breaksDue-breaksTaken);
   const intervalMinutes=workSec/60;
+  if(idlePaused)return {
+    level:t('coach.away'),
+    title:t('coach.awayTitle'),
+    copy:t('coach.awayCopy'),
+    next:nextEx
+  };
   if(breakPending)return {
     level:t('coach.toDo'),
     title:t('coach.pendingTitle'),
@@ -613,13 +740,13 @@ function getCoachPlan(minsSince,nextEx){
     copy:t('coach.breakCopy'),
     next:nextEx
   };
-  if(!running&&breaksDue===0)return {
+  if(!running&&!sessionStarted)return {
     level:t('coach.ready'),
     title:t('coach.startTitle'),
     copy:t('coach.startCopy'),
     next:nextEx
   };
-  if(minsSince>=intervalMinutes||missedBreaks>=2)return {
+  if(minsSince>=intervalMinutes)return {
     level:t('coach.priority'),
     title:t('coach.priorityTitle'),
     copy:t('coach.priorityCopy'),
@@ -641,30 +768,26 @@ function getCoachPlan(minsSince,nextEx){
 
 // ═══ UI ════════════════════════════════════════════════════════
 function updateUI(){
+  syncActiveTracking();
   if(running&&!inBreak)syncWorkLeft();
   if(inBreak){syncBreakLeft();updateBreakProgress();}
-  const active=running||inBreak||breakPending;
-  const raw=calcScore();
-  smoothScore=raw;
-  const score=raw;
-  const bsPct=breaksDue===0?1:breaksTaken/breaksDue;
   const minsSince=(Date.now()-lastBreakTime)/60000;
   const intervalMinutes=workSec/60;
-  const tsPct=Math.max(0,1-minsSince/intervalMinutes);
-  setArc(UI.arcBreak,565.5,active?bsPct:0);
-  setArc(UI.arcSession,464.9,active?tsPct:0);
-  setArc(UI.arcScore,364.4,score/100);
-  const col=scoreColor(score);
-  UI.arcScore.setAttribute('stroke',col);
-  UI.arcBreak.setAttribute('stroke','#28d4b4');
-  UI.arcSession.setAttribute('stroke',bsPct>.8?'#7c83f5':'#e8a020');
-  UI.scoreNum.style.color=col;
-  UI.scoreNum.textContent=score;
-  UI.scoreStatus.textContent=breakPending?t('score.pending'):active?localizedScoreLabel(score):t('score.ready');
-  UI.mBreak.textContent=`${breaksTaken} / ${breaksDue}`;
-  UI.mBreakBar.style.width=(breaksDue===0?0:breaksTaken/breaksDue*100)+'%';
+  setArc(UI.arcVisual,565.5,reminderProgress(reminderLeft.visual,visualSec));
+  setArc(UI.arcPosture,464.9,reminderProgress(reminderLeft.posture,postureSec));
   const nextReminderKind=breakPending?pendingReminderKind:getNextReminderKind();
-  UI.mBreakSub.textContent=breakPending?t('metric.pending'):`${t('timer.'+nextReminderKind)} · ${t('metric.nextBreak')}${fmt(workLeft)}`;
+  const state=rhythmState({ running,inBreak,breakPending,idlePaused });
+  UI.rhythmValue.textContent=state==='running'?fmt(workLeft)
+    :state==='pending'?t('rhythm.readyValue')
+      :state==='break'?`${breakLeft}s`
+        :state==='away'?t('rhythm.awayValue'):'—';
+  UI.rhythmStatus.textContent=state==='running'?t('timer.'+nextReminderKind)
+    :state==='pending'?t(`nudge.${nextReminderKind}Title`)
+      :state==='break'?t('rhythm.status.break')
+        :state==='away'?t('rhythm.status.away'):t('rhythm.status.ready');
+  const guidedBreaks=visualBreaksTaken+postureBreaksTaken;
+  UI.mBreak.textContent=String(guidedBreaks+naturalBreaksTaken);
+  UI.mBreakSub.textContent=`${guidedBreaks} ${t('metric.guided')} · ${naturalBreaksTaken} ${t('metric.natural')}`;
   const minsS=Math.round(minsSince);
   UI.mFatigue.textContent=minsS+t('time.minute');
   UI.mFatigueBar.style.width=Math.min(minsSince/intervalMinutes*100,100)+'%';
@@ -676,9 +799,10 @@ function updateUI(){
   }
   UI.timerNext.textContent=t('timer.'+nextReminderKind);
   if(breakPending)UI.startBtn.textContent=t('action.startBreak');
-  const mins=Math.floor((Date.now()-sessionStart)/60000);
+  const mins=Math.floor(getActiveTrackedMs()/60000);
   UI.sTime.textContent=mins<60?mins+t('time.minute'):Math.floor(mins/60)+t('time.hour')+(mins%60)+t('time.minute');
-  UI.sBreaks.textContent=breaksTaken;
+  UI.sNatural.textContent=naturalBreaksTaken;
+  UI.sBreaks.textContent=guidedBreaks;
   const nextEx=getUpcomingExercise(nextReminderKind);
   UI.sExercise.textContent=nextEx?nextEx.ico:'—';
   const coachPlan=getCoachPlan(minsSince,nextEx);
@@ -689,8 +813,6 @@ function updateUI(){
   UI.coachNextText.textContent=coachPlan.next?`${catLabel(coachPlan.next.cat)} · ${exText(coachPlan.next,'name')}`:t('coach.next');
   UI.coachBreakBtn.disabled=inBreak;
   UI.coachBreakBtn.textContent=breakPending?t('action.confirmBreak'):inBreak?t('action.breakRunning'):t('action.breakNow');
-  const hs=scoreHistory.map(h=>h.s);
-  if(hs.length){const avg=Math.round(hs.reduce((a,b)=>a+b)/hs.length);UI.sAvg.textContent=avg;UI.sAvg.style.color=scoreColor(avg);}
 }
 function fmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function remainingSeconds(deadline){
@@ -772,6 +894,8 @@ function renderBreakAnimation(){
   startAnim(ctx,W,H,activeBreakExercise.anim,false,currentLanguage());
 }
 function catchUpTimers(){
+  maybeRepeatPendingReminder();
+  if(idlePaused){updateUI();return;}
   if(inBreak){
     syncBreakLeft();
     if(breakLeft<=0){completeOrEndBreak();return;}
@@ -789,10 +913,12 @@ function catchUpTimers(){
 
 // ═══ TIMER ═════════════════════════════════════════════════════
 function toggleTimer(){
-  if(inBreak)return;
+  if(inBreak||idlePaused)return;
   if(breakPending){startPendingBreak();return;}
   running=!running;
   if(running){
+    sessionStarted=true;
+    ensureIdleDetection(true);
     UI.startBtn.textContent=t('action.pause');
     startWorkTicker();
   }else{
@@ -805,10 +931,12 @@ function toggleTimer(){
 }
 function startWorkTicker(){
   stopWorkTicker();
+  if(idlePaused)return;
   setReminderDeadlines();
   ticker=setInterval(()=>{
     syncWorkLeft();
     if(breakPending){
+      maybeRepeatPendingReminder();
       REMINDER_KINDS.filter(kind=>kind!==pendingReminderKind&&reminderLeft[kind]<=0).forEach(kind=>{reminderEndAt[kind]=null;});
       updateUI();
       return;
@@ -827,9 +955,12 @@ function stopBreakTicker(){
 function resetTimer(){
   stopWorkTicker();stopBreakTicker();stopAllAnims();
   running=false;inBreak=false;breakPending=false;breakComplete=false;breakLeft=breakSec;breakTotal=breakSec;
+  idlePaused=false;idleStartedAt=null;resumeAfterIdle=false;
   reminderLeft={ visual:reminderIntervalSeconds('visual'),posture:reminderIntervalSeconds('posture') };
   updateDerivedWorkLeft();
-  clearReminderDeadlines();breakEndAt=null;pendingPick=null;pendingReminderKind=null;scheduledDueOpen=false;
+  clearReminderDeadlines();breakEndAt=null;pendingPick=null;pendingReminderKind=null;
+  clearPendingReminderAttention();
+  closeDueNotifications();
   UI.startBtn.textContent=t('action.start');
   UI.breakOverlay.classList.remove('active','pending','complete','immersive','offscreen');
   UI.breakOverlay.setAttribute('aria-hidden','true');
@@ -846,12 +977,12 @@ function queueBreak(kind=getDueReminderKind()||getNextReminderKind()){
   if(pendingReminderKind&&pendingReminderKind!==kind)pendingPick=null;
   breakPending=true;pendingReminderKind=kind;workLeft=0;
   reminderEndAt[kind]=null;
-  if(!scheduledDueOpen){breaksDue++;scheduledDueOpen=true;}
+  sessionStarted=true;
   pendingPick=pendingPick||selectNextExercise(kind);
+  schedulePendingReminderRepeat();
   notifyBreakDue(pendingPick.exercise,kind);
   showPendingBreak();
   UI.startBtn.textContent=t('action.startBreak');
-  addHistPoint();
   updateUI();
 }
 function showPendingBreak(){
@@ -873,6 +1004,8 @@ function snoozeBreak(){
   syncWorkLeft();
   const kind=pendingReminderKind||'visual';
   breakPending=false;
+  clearPendingReminderAttention();
+  closeDueNotifications();
   running=true;
   reminderLeft[kind]=5*60;
   REMINDER_KINDS.filter(item=>item!==kind&&reminderLeft[item]<=0).forEach(item=>{reminderLeft[item]=OVERLAP_GRACE_SECONDS;});
@@ -882,30 +1015,63 @@ function snoozeBreak(){
   startWorkTicker();
   updateUI();
 }
+async function closeDueNotifications(){
+  const registration=serviceWorkerReady?await serviceWorkerReady:null;
+  if(!registration?.getNotifications)return;
+  try{
+    const notifications=await registration.getNotifications({ tag:'visupause-break-due' });
+    notifications.forEach(notification=>notification.close());
+  }catch{}
+}
+function registerNaturalBreak({ source='manual',durationSeconds=0,resume }={}){
+  if(inBreak)return;
+  if(running)syncWorkLeft();
+  const shouldResume=typeof resume==='boolean'?resume:(running||breakPending);
+  breakPending=false;
+  pendingPick=null;
+  pendingReminderKind=null;
+  clearPendingReminderAttention();
+  hideBreakNudge();
+  closeDueNotifications();
+  reminderLeft={ visual:reminderIntervalSeconds('visual'),posture:reminderIntervalSeconds('posture') };
+  updateDerivedWorkLeft();
+  clearReminderDeadlines();
+  const now=Date.now();
+  lastBreakTime=now;
+  naturalBreaksTaken++;
+  recordActivity('natural',source,durationSeconds);
+  running=shouldResume;
+  UI.startBtn.textContent=running?t('action.pause'):t('action.start');
+  if(running)startWorkTicker();
+  else stopWorkTicker();
+  updateUI();
+}
 function startPendingBreak(){
   if(!breakPending)return;
   closePractice();
   const picked=pendingPick;
   const kind=pendingReminderKind||picked?.exercise?.reminderKind||'visual';
   breakPending=false;
+  clearPendingReminderAttention();
   pendingPick=null;pendingReminderKind=null;
   hideBreakNudge();
-  startBreak({ picked, kind, countDue:false });
+  startBreak({ picked, kind, source:'scheduled' });
 }
 function startBreak(options={}){
-  const { countDue=true, picked=null } = options;
+  const { picked=null, source='manual' } = options;
   const kind=options.kind||picked?.exercise?.reminderKind||getNextReminderKind();
   if(running)syncWorkLeft();
   stopWorkTicker();stopBreakTicker();running=false;inBreak=true;extUsed=false;
+  clearPendingReminderAttention();
   clearReminderDeadlines();
-  if(countDue){breaksDue++;scheduledDueOpen=true;}
   const ex=chooseNextExercise(picked,kind);
   const exerciseSeconds=Number.parseInt(ex.dur,10);
   breakComplete=false;breakLeft=breakTotal=Number.isFinite(exerciseSeconds)?exerciseSeconds:20;
-  activeBreakExercise=ex;activeBreakKind=kind;
+  activeBreakExercise=ex;activeBreakKind=kind;activeBreakSource=source;
+  sessionStarted=true;
+  closeDueNotifications();
   setBreakStageMode(ex);
-  if(kind==='posture')lastPostureBreakTime=Date.now();
-  else{lastVisualBreakTime=Date.now();lastBreakTime=lastVisualBreakTime;}
+  if(kind==='visual')lastBreakTime=Date.now();
   breakEndAt=Date.now()+breakLeft*1000;
   const cat=CATS[ex.cat];
   UI.bCat.textContent=catLabel(ex.cat);UI.bCat.style.color=cat.color;
@@ -940,22 +1106,19 @@ function startManualBreak(){
   const picked=pendingPick;
   const kind=pendingReminderKind||picked?.exercise?.reminderKind||getNextReminderKind();
   pendingPick=null;pendingReminderKind=null;
-  startBreak({ picked, kind, countDue:!scheduledDueOpen });
+  startBreak({ picked, kind, source:'manual' });
 }
 function startTestExercise(i){
   openPractice(i,true);
 }
 function selectNextExercise(kind=getNextReminderKind()){
-  const fatigueMinutes=(Date.now()-lastBreakTime)/60000;
   const eligible=getEligibleExercises(kind);
   const queue=exerciseQueues[kind]||exerciseQueues.all;
   return pickExercise({
     exercises:eligible,
     order:queue.order,
     cursor:queue.cursor,
-    lastCategory:lastExerciseCat,
-    fatigueMinutes,
-    missedBreaks:Math.max(0,breaksDue-breaksTaken)
+    lastCategory:lastExerciseCat
   });
 }
 function chooseNextExercise(picked,kind=getNextReminderKind()){
@@ -964,10 +1127,9 @@ function chooseNextExercise(picked,kind=getNextReminderKind()){
   queue.order=picked.order;
   queue.cursor=picked.cursor;
   lastExerciseCat=picked.exercise.cat;
-  exerciseDiversity.add(picked.exercise.cat);
   return picked.exercise;
 }
-function endBreak(auto=false){
+function endBreak(){
   if(!inBreak)return;
   stopBreakTicker();stopAllAnims();
   UI.breakOverlay.classList.remove('active','complete','immersive','offscreen');
@@ -976,19 +1138,22 @@ function endBreak(auto=false){
   reminderLeft[completedKind]=reminderIntervalSeconds(completedKind);
   REMINDER_KINDS.filter(kind=>kind!==completedKind&&reminderLeft[kind]<=0).forEach(kind=>{reminderLeft[kind]=OVERLAP_GRACE_SECONDS;});
   updateDerivedWorkLeft();
-  activeBreakExercise=null;activeBreakKind=null;
-  breakEndAt=null;scheduledDueOpen=false;
-  inBreak=false;breakComplete=false;breaksTaken++;running=true;
+  const completedSource=activeBreakSource;
+  activeBreakExercise=null;activeBreakKind=null;activeBreakSource='manual';
+  breakEndAt=null;
+  inBreak=false;breakComplete=false;running=true;
+  if(completedKind==='posture')postureBreaksTaken++;
+  else visualBreaksTaken++;
+  recordActivity(completedKind,completedSource,breakTotal-breakLeft);
   syncOverlayState();
   UI.startBtn.textContent=t('action.pause');
   UI.endBreakBtn.textContent=t('action.endBreak');
   UI.endBreakBtn.setAttribute('aria-label',t('break.ariaEnd'));
-  if(auto)notifyBreakEnd();
   startWorkTicker();
-  addHistPoint();updateUI();
+  updateUI();
 }
 function completeOrEndBreak(){
-  if(settings.exitMode==='auto'){endBreak(true);return;}
+  if(settings.exitMode==='auto'){endBreak();return;}
   completeBreakTimer();
 }
 function completeBreakTimer(){
@@ -1002,7 +1167,6 @@ function completeBreakTimer(){
   UI.endBreakBtn.textContent=getBreakCompleteLabel();
   UI.endBreakBtn.setAttribute('aria-label',t('break.ariaReady'));
   UI.endBreakBtn.focus();
-  notifyBreakReadyToEnd();
   updateUI();
 }
 function extendBreak(){
@@ -1055,95 +1219,42 @@ function closePractice(){
   practiceReturnFocus=null;
 }
 
-// ═══ CHART ═════════════════════════════════════════════════════
-function resizeChartCanvas(){
-  const canvas=UI.histChart;
-  const ratio=Math.min(window.devicePixelRatio||1,2);
-  const width=Math.max(1,canvas.clientWidth);
-  const height=Math.max(1,canvas.clientHeight);
-  const targetWidth=Math.round(width*ratio);
-  const targetHeight=Math.round(height*ratio);
-  if(canvas.width!==targetWidth||canvas.height!==targetHeight){
-    canvas.width=targetWidth;
-    canvas.height=targetHeight;
-  }
-  const ctx=canvas.getContext('2d');
-  ctx.setTransform(ratio,0,0,ratio,0,0);
-  return { ctx, width, height };
-}
-function drawChart(){
-  if(!chart)return;
-  const { ctx, width, height }=resizeChartCanvas();
-  const padX=14,padY=12,plotW=Math.max(1,width-padX*2),plotH=Math.max(1,height-padY*2);
-  ctx.clearRect(0,0,width,height);
-  ctx.lineWidth=1;
-  ctx.strokeStyle='rgba(255,255,255,.045)';
-  [0,25,50,75,100].forEach(value=>{
-    const y=padY+(100-value)/100*plotH;
-    ctx.beginPath();
-    ctx.moveTo(padX,y);
-    ctx.lineTo(width-padX,y);
-    ctx.stroke();
-  });
-  if(!scoreHistory.length){
-    UI.chartMeta.textContent=t('chart.empty');
+// ═══ ACTIVITY JOURNAL ═════════════════════════════════════════
+function renderActivityJournal(){
+  if(!UI.activityList)return;
+  UI.activityList.textContent='';
+  const events=todayActivity();
+  UI.chartMeta.textContent=events.length?`${events.length} ${t('chart.eventsToday')}`:t('chart.empty');
+  if(!events.length){
+    UI.activityList.append(el('p',{ className:'activity-empty',text:t('chart.empty') }));
     return;
   }
-  const points=scoreHistory.map((item,index)=>{
-    const x=padX+(scoreHistory.length===1?0.5:index/(scoreHistory.length-1))*plotW;
-    const y=padY+(100-Math.max(0,Math.min(100,item.s)))/100*plotH;
-    return { x,y,s:item.s };
+  events.slice(-6).reverse().forEach(event=>{
+    const row=el('article',{ className:`activity-item ${event.kind}` });
+    const at=new Date(event.at);
+    const time=`${String(at.getHours()).padStart(2,'0')}:${String(at.getMinutes()).padStart(2,'0')}`;
+    const icon=event.kind==='visual'?'↗':event.kind==='posture'?'◌':'☕';
+    const detail=event.kind==='natural'&&event.durationSeconds
+      ? `${Math.max(1,Math.round(event.durationSeconds/60))}${t('time.minute')} · ${t(`activity.source.${event.source}`)}`
+      : t(`activity.source.${event.source}`);
+    row.append(
+      el('time',{ className:'activity-time',text:time,attrs:{ datetime:at.toISOString() } }),
+      el('span',{ className:'activity-icon',text:icon,attrs:{ 'aria-hidden':'true' } }),
+      el('div',{ className:'activity-copy' })
+    );
+    row.lastElementChild.append(
+      el('strong',{ text:t(`activity.${event.kind}`) }),
+      el('small',{ text:detail })
+    );
+    UI.activityList.append(row);
   });
-  const current=points[points.length-1];
-  const color=scoreColor(current.s);
-  const fill=ctx.createLinearGradient(0,padY,0,height-padY);
-  fill.addColorStop(0,'rgba(40,212,180,.16)');
-  fill.addColorStop(1,'rgba(40,212,180,0)');
-  if(points.length>1){
-    ctx.beginPath();
-    ctx.moveTo(points[0].x,height-padY);
-    points.forEach(point=>ctx.lineTo(point.x,point.y));
-    ctx.lineTo(current.x,height-padY);
-    ctx.closePath();
-    ctx.fillStyle=fill;
-    ctx.fill();
-    ctx.beginPath();
-    points.forEach((point,index)=>{
-      if(index===0)ctx.moveTo(point.x,point.y);
-      else ctx.lineTo(point.x,point.y);
-    });
-    ctx.strokeStyle=color;
-    ctx.lineWidth=2;
-    ctx.lineJoin='round';
-    ctx.lineCap='round';
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.arc(current.x,current.y,3.5,0,Math.PI*2);
-  ctx.fillStyle=color;
-  ctx.fill();
-  UI.chartMeta.textContent=scoreHistory.length+t('chart.points')+current.s;
-}
-function initChart(){
-  chart={ ready:true };
-  drawChart();
-  window.addEventListener('resize',()=>{
-    clearTimeout(chartResizeTimer);
-    chartResizeTimer=setTimeout(drawChart,120);
-  });
-}
-function addHistPoint(){
-  const now=new Date(),lbl=now.getHours()+':'+String(now.getMinutes()).padStart(2,'0'),s=Math.round(smoothScore);
-  if(lbl===lastHistMinute)return;
-  lastHistMinute=lbl;
-  scoreHistory.push({t:lbl,s});if(scoreHistory.length>60)scoreHistory.shift();saveHistory(scoreHistory);
-  drawChart();
 }
 function resetSession(){
   if(!confirm(t('reset.confirm')))return;
-  scoreHistory=[];saveHistory(scoreHistory);breaksTaken=0;breaksDue=0;sessionStart=Date.now();
-  smoothScore=100;lastBreakTime=Date.now();lastVisualBreakTime=lastBreakTime;lastPostureBreakTime=lastBreakTime;resetExerciseQueues();exerciseDiversity=new Set();lastExerciseCat=null;
-  drawChart();
+  visualBreaksTaken=0;postureBreaksTaken=0;naturalBreaksTaken=0;
+  sessionId=Date.now();sessionStarted=false;activeTrackedMs=0;activeTrackingStartedAt=null;
+  lastBreakTime=Date.now();resetExerciseQueues();lastExerciseCat=null;
+  renderActivityJournal();
   resetTimer();
 }
 
@@ -1153,10 +1264,9 @@ bindActions();
 renderExerciseLibrary();
 renderSettings();
 applyLanguage();
-initChart();
+renderActivityJournal();
 handleLaunchAction();
 updateNotificationButton();
-setInterval(()=>{updateUI();if(running||inBreak)addHistPoint();},60000);
 setInterval(updateUI,3000);
 updateUI();
 })();

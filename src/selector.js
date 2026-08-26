@@ -7,7 +7,7 @@ function shuffleIndices(length) {
   return indices;
 }
 
-function pickExercise({ exercises, order, cursor, lastCategory, fatigueMinutes, missedBreaks }) {
+function pickExercise({ exercises, order, cursor, lastCategory }) {
   if (!exercises.length) return null;
   let nextOrder = Array.isArray(order) && order.length === exercises.length ? order : shuffleIndices(exercises.length);
   let nextCursor = Number.isFinite(cursor) ? cursor : 0;
@@ -17,9 +17,6 @@ function pickExercise({ exercises, order, cursor, lastCategory, fatigueMinutes, 
     nextCursor = 0;
   }
 
-  const preferRecovery = fatigueMinutes >= 25 || missedBreaks >= 2;
-  const recoveryCategories = new Set(['relaxation', 'breath', 'peripheral', 'neck']);
-
   let choice = nextOrder[nextCursor % nextOrder.length];
   let offsetUsed = 0;
 
@@ -27,8 +24,7 @@ function pickExercise({ exercises, order, cursor, lastCategory, fatigueMinutes, 
     const index = nextOrder[(nextCursor + offset) % nextOrder.length];
     const exercise = exercises[index];
     const avoidsRepeat = exercise.cat !== lastCategory;
-    const fitsFatigue = !preferRecovery || recoveryCategories.has(exercise.cat);
-    if (avoidsRepeat && fitsFatigue) {
+    if (avoidsRepeat) {
       choice = index;
       offsetUsed = offset;
       break;

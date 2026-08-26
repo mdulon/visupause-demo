@@ -1,20 +1,54 @@
-const HISTORY_KEY = 'vp3_hist';
 const SETTINGS_KEY = 'vp3_settings';
+const ACTIVITY_KEY = 'vp4_activity';
+const LEGACY_HISTORY_KEY = 'vp3_hist';
+const ACTIVITY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_ACTIVITY_EVENTS = 200;
+const ACTIVITY_KINDS = new Set(['visual', 'posture', 'natural']);
+const ACTIVITY_SOURCES = new Set(['scheduled', 'manual', 'idle']);
 
-function loadHistory() {
+function normalizeActivity(events, now = Date.now()) {
+  const cutoff = now - ACTIVITY_RETENTION_MS;
+  if (!Array.isArray(events)) return [];
+  return events
+    .filter(event => event
+      && Number.isFinite(event.at)
+      && event.at >= cutoff
+      && event.at <= now + 60 * 1000
+      && ACTIVITY_KINDS.has(event.kind)
+      && ACTIVITY_SOURCES.has(event.source))
+    .map(event => ({
+      at: event.at,
+      kind: event.kind,
+      source: event.source,
+      durationSeconds: Math.max(0, Math.round(Number(event.durationSeconds) || 0)),
+      sessionId: Number.isFinite(event.sessionId) ? event.sessionId : event.at
+    }))
+    .sort((a, b) => a.at - b.at)
+    .slice(-MAX_ACTIVITY_EVENTS);
+}
+
+function loadActivity(now = Date.now()) {
   try {
-    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(item => item && typeof item.t === 'string' && Number.isFinite(item.s)).slice(-60);
+    return normalizeActivity(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]'), now);
   } catch {
     return [];
   }
 }
 
-function saveHistory(history) {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-60)));
-  } catch {}
+function saveActivity(events, now = Date.now()) {
+  const normalized = normalizeActivity(events, now);
+  try { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(normalized)); }
+  catch {}
+  return normalized;
+}
+
+function appendActivityEvent(events, event, now = Date.now()) {
+  return saveActivity([...(Array.isArray(events) ? events : []), event], now);
+}
+
+function clearLegacyHistory() {
+  try { localStorage.removeItem(LEGACY_HISTORY_KEY); }
+  catch {}
 }
 
 function loadSettings() {
@@ -32,4 +66,11 @@ function saveSettings(settings) {
   } catch {}
 }
 
-window.VisuStorage = { loadHistory, saveHistory, loadSettings, saveSettings };
+window.VisuStorage = {
+  loadActivity,
+  saveActivity,
+  appendActivityEvent,
+  clearLegacyHistory,
+  loadSettings,
+  saveSettings
+};

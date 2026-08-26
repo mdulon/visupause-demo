@@ -6,14 +6,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="VisuPause Pro">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#050709">
+<meta name="theme-color" content="#16212a">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>VisuPause Pro — Des pauses qui quittent l’écran</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 
@@ -43,43 +43,37 @@
     </div>
   </section>
 
-  <div class="score-card">
+  <div class="score-card rhythm-card">
     <div class="triple-ring">
       <svg class="ring-svg" viewBox="0 0 196 196">
         <circle class="ring-track" cx="98" cy="98" r="90" stroke-width="2.5"/>
-        <circle class="ring-arc" id="arcBreak" cx="98" cy="98" r="90" stroke="#28d4b4" stroke-width="2.5" stroke-dasharray="565.5" stroke-dashoffset="565.5"/>
+        <circle class="ring-arc" id="arcVisual" cx="98" cy="98" r="90" stroke="#58e0c4" stroke-width="3" stroke-dasharray="565.5" stroke-dashoffset="565.5"/>
       </svg>
       <svg class="ring-svg" viewBox="0 0 196 196">
         <circle class="ring-track" cx="98" cy="98" r="74" stroke-width="2.5"/>
-        <circle class="ring-arc" id="arcSession" cx="98" cy="98" r="74" stroke="#7c83f5" stroke-width="2.5" stroke-dasharray="464.9" stroke-dashoffset="464.9"/>
-      </svg>
-      <svg class="ring-svg" viewBox="0 0 196 196">
-        <circle class="ring-track" cx="98" cy="98" r="58" stroke-width="4.5"/>
-        <circle class="ring-arc" id="arcScore" cx="98" cy="98" r="58" stroke="#28d4b4" stroke-width="4.5" stroke-dasharray="364.4" stroke-dashoffset="364.4"/>
+        <circle class="ring-arc" id="arcPosture" cx="98" cy="98" r="74" stroke="#9da4ff" stroke-width="3" stroke-dasharray="464.9" stroke-dashoffset="464.9"/>
       </svg>
       <div class="ring-center">
-        <div class="score-num" id="scoreNum">—</div>
-        <div class="score-lbl">EyeScore™</div>
-        <div class="score-status" id="scoreStatus">Démarre le timer</div>
+        <div class="score-num rhythm-value" id="rhythmValue">—</div>
+        <div class="score-lbl" data-i18n="rhythm.next">Prochain rappel</div>
+        <div class="score-status" id="rhythmStatus">Prêt à démarrer</div>
       </div>
     </div>
     <div class="ring-legend">
-      <div class="leg"><div class="leg-dot" style="background:#28d4b4"></div><span data-i18n="legend.breaks">Pauses</span></div>
-      <div class="leg"><div class="leg-dot" style="background:#7c83f5"></div><span data-i18n="legend.session">Session</span></div>
-      <div class="leg"><div class="leg-dot" style="background:#28d4b4;height:5px"></div><span data-i18n="legend.total">Total</span></div>
+      <div class="leg"><div class="leg-dot" style="background:#58e0c4"></div><span data-i18n="legend.visual">Regard au loin</span></div>
+      <div class="leg"><div class="leg-dot" style="background:#9da4ff"></div><span data-i18n="legend.posture">Mobilité</span></div>
     </div>
   </div>
 
   <div class="right-panel">
     <div class="metrics-card">
       <div class="metric-row">
-        <div class="metric-head"><span class="mlabel" data-i18n="metric.breaks">⏸ Rappels respectés</span><span class="mval" id="mBreak">0 / 0</span></div>
-        <div class="mbar"><div class="mfill" id="mBreakBar" style="width:0%;background:var(--teal)"></div></div>
-        <div class="msub" id="mBreakSub">Prochaine pause dans —</div>
+        <div class="metric-head"><span class="mlabel" data-i18n="metric.breaks">⏸ Pauses cette session</span><span class="mval" id="mBreak">0</span></div>
+        <div class="msub" id="mBreakSub">0 guidée · 0 naturelle</div>
       </div>
       <hr class="divider">
       <div class="metric-row">
-        <div class="metric-head"><span class="mlabel" data-i18n="metric.since">🕐 Depuis le dernier regard au loin</span><span class="mval" id="mFatigue">0 min</span></div>
+        <div class="metric-head"><span class="mlabel" data-i18n="metric.since">🕐 Depuis la dernière pause visuelle</span><span class="mval" id="mFatigue">0 min</span></div>
         <div class="mbar"><div class="mfill" id="mFatigueBar" style="width:0%"></div></div>
         <div class="msub" id="mFatigueSub">Rythme en cours</div>
       </div>
@@ -95,7 +89,10 @@
           <span id="coachNextIcon">—</span>
           <span id="coachNextText">Prochaine pause</span>
         </div>
-        <button class="coach-action" id="coachBreakBtn" data-action="start-break-now" type="button">Pause maintenant</button>
+        <div class="coach-actions">
+          <button class="coach-action" id="coachBreakBtn" data-action="start-break-now" type="button">Pause maintenant</button>
+          <button class="coach-secondary" data-action="register-natural-break" type="button" data-i18n="action.naturalBreak">J’ai déjà quitté l’écran</button>
+        </div>
       </div>
       <hr class="divider">
       <div class="timer-block">
@@ -114,16 +111,16 @@
 
   <div class="chart-card">
     <div class="chart-head">
-      <span class="chart-title" data-i18n="chart.title">EyeScore™ — historique</span>
-      <span class="chart-meta" id="chartMeta">aucune donnée</span>
+      <span class="chart-title" data-i18n="chart.title">Journal du jour</span>
+      <span class="chart-meta" id="chartMeta">Aucune pause enregistrée</span>
     </div>
-    <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+    <div class="activity-list" id="activityList" aria-live="polite"></div>
   </div>
 
   <div class="sess-strip">
-    <div class="sess-cell"><div class="sval" id="sTime">0m</div><div class="slbl" data-i18n="session.time">Session</div></div>
-    <div class="sess-cell"><div class="sval" id="sAvg">—</div><div class="slbl" data-i18n="session.avg">Score moyen</div></div>
-    <div class="sess-cell"><div class="sval" id="sBreaks">0</div><div class="slbl" data-i18n="session.breaks">Pauses prises</div></div>
+    <div class="sess-cell"><div class="sval" id="sTime">0m</div><div class="slbl" data-i18n="session.time">Temps suivi</div></div>
+    <div class="sess-cell"><div class="sval" id="sNatural">0</div><div class="slbl" data-i18n="session.natural">Pauses naturelles</div></div>
+    <div class="sess-cell"><div class="sval" id="sBreaks">0</div><div class="slbl" data-i18n="session.breaks">Pauses guidées</div></div>
     <div class="sess-cell"><div class="sval" id="sExercise">—</div><div class="slbl" data-i18n="session.next">Prochaine pause</div></div>
   </div>
 
@@ -270,6 +267,15 @@
         </details>
       </section>
       <section class="settings-section">
+        <div class="settings-label" data-i18n="settings.idleDetection">Détection d’absence</div>
+        <div class="settings-sub" data-i18n="settings.idleDetectionHelp">Après deux minutes d’inactivité de l’appareil, les deux rythmes repartent de zéro à ton retour.</div>
+        <div class="segmented" id="idleDetectionSettings">
+          <button type="button" data-action="set-idle-detection" data-mode="on" data-i18n="mode.enabled">Activée</button>
+          <button type="button" data-action="set-idle-detection" data-mode="off" data-i18n="mode.disabled">Désactivée</button>
+        </div>
+        <div class="settings-sub" id="idleDetectionStatus" aria-live="polite"></div>
+      </section>
+      <section class="settings-section">
         <div class="settings-label" data-i18n="settings.exitMode">Fin de pause</div>
         <div class="settings-sub" data-i18n="settings.exitModeHelp">Décide si le minuteur reprend après confirmation ou automatiquement.</div>
         <div class="segmented" id="exitModeSettings">
@@ -281,12 +287,12 @@
   </div>
 </div>
 
-<script src="src/exercises.js?v=13"></script>
-<script src="src/animations.js?v=13"></script>
-<script src="src/score.js?v=13"></script>
-<script src="src/selector.js?v=13"></script>
-<script src="src/storage.js?v=13"></script>
-<script src="src/i18n.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="src/exercises.js?v=14"></script>
+<script src="src/animations.js?v=14"></script>
+<script src="src/rhythm.js?v=14"></script>
+<script src="src/selector.js?v=14"></script>
+<script src="src/storage.js?v=14"></script>
+<script src="src/i18n.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

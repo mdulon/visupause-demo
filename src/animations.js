@@ -124,7 +124,7 @@ function setLoop(isPractice, loop) {
 }
 
 function clear(ctx, width, height, alpha = 1) {
-  ctx.fillStyle = `rgba(5,7,9,${alpha})`;
+  ctx.fillStyle = `rgba(22,33,42,${alpha})`;
   ctx.fillRect(0, 0, width, height);
 }
 
@@ -138,12 +138,12 @@ function orb(ctx, x, y, color) {
   ctx.fill();
   ctx.beginPath();
   ctx.arc(x, y, 7, 0, Math.PI * 2);
-  ctx.fillStyle = color.includes('rgba') ? '#28d4b4' : color;
+  ctx.fillStyle = color.includes('rgba') ? '#58e0c4' : color;
   ctx.fill();
 }
 
-function label(ctx, width, height, text, color = 'rgba(155,181,204,.4)') {
-  ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
+function label(ctx, width, height, text, color = 'rgba(209,221,229,.92)') {
+  ctx.font = '600 15px system-ui, -apple-system, Segoe UI, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillStyle = color;
   ctx.fillText(text, width / 2, height - 12);
@@ -251,7 +251,7 @@ function createDepth(ctx, width, height) {
       ctx.fill();
     });
     const pulseDepth = 0.42 + 0.22 * Math.sin(Date.now() / 1200);
-    depthTarget(ctx, width, height, pulseDepth, '#28d4b4', a('focusCenter'));
+    depthTarget(ctx, width, height, pulseDepth, '#58e0c4', a('focusCenter'));
     stars.forEach(star => {
       const p = 1 - star.z;
       const x = width / 2 + star.nx * width * 0.5 * p;
@@ -383,7 +383,7 @@ function createNearFar(ctx, width, height) {
   return () => {
     t += 0.018;
     const depth = 0.5 + 0.5 * Math.sin(t);
-    depthTarget(ctx, width, height, depth, depth < 0.5 ? '#e05050' : '#28d4b4', depth < 0.5 ? a('nearFocus') : a('farFocus'));
+    depthTarget(ctx, width, height, depth, depth < 0.5 ? '#ff8585' : '#58e0c4', depth < 0.5 ? a('nearFocus') : a('farFocus'));
   };
 }
 
@@ -393,7 +393,7 @@ function createConvergence(ctx, width, height) {
     t += 0.016;
     const depth = 0.5 + 0.5 * Math.cos(t);
     const approaching = Math.sin(t) < 0;
-    depthTarget(ctx, width, height, depth, '#28d4b4', approaching ? a('approaching') : a('receding'));
+    depthTarget(ctx, width, height, depth, '#58e0c4', approaching ? a('approaching') : a('receding'));
   };
 }
 
@@ -407,7 +407,7 @@ function createSpiral(ctx, width, height) {
     progress += forward ? 0.01 : -0.01;
     if (progress >= 1) forward = false;
     if (progress <= 0) forward = true;
-    depthTarget(ctx, width, height, 1 - progress, '#28d4b4', a('spiralDepth'));
+    depthTarget(ctx, width, height, 1 - progress, '#58e0c4', a('spiralDepth'));
     const angle = progress * Math.PI * 6;
     const radius = (0.16 + progress * 0.84) * maxRadius;
     const x = cx + Math.cos(angle) * radius;
@@ -422,8 +422,8 @@ function createBrock(ctx, width, height) {
   let tick = 0;
   const beads = [
     { x: width / 2, y: height * 0.28, color: '#e05050' },
-    { x: width / 2, y: height * 0.5, color: '#e8a020' },
-    { x: width / 2, y: height * 0.72, color: '#28d4b4' }
+    { x: width / 2, y: height * 0.5, color: '#f1b24a' },
+    { x: width / 2, y: height * 0.72, color: '#58e0c4' }
   ];
   return () => {
     clear(ctx, width, height, 1);
@@ -439,7 +439,7 @@ function createBrock(ctx, width, height) {
   };
 }
 
-function createSaccade(ctx, width, height, points, text, color = '#28d4b4') {
+function createSaccade(ctx, width, height, points, text, color = '#58e0c4') {
   let index = 0;
   let age = 0;
   return () => {
@@ -477,11 +477,11 @@ function createBlink(ctx, width, height) {
     if (eyeHeight > 8) {
       ctx.beginPath();
       ctx.arc(width / 2, height / 2, 18, 0, Math.PI * 2);
-      ctx.fillStyle = '#28d4b4';
+      ctx.fillStyle = '#58e0c4';
       ctx.fill();
       ctx.beginPath();
       ctx.arc(width / 2, height / 2, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#050709';
+      ctx.fillStyle = '#16212a';
       ctx.fill();
     }
     label(ctx, width, height, a('blink'));
@@ -502,7 +502,7 @@ function createPeripheral(ctx, width, height) {
     if (tick % 14 === 0) active = (active + 1) % points.length;
     ctx.beginPath();
     ctx.arc(width / 2, height / 2, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#d8eaff';
+    ctx.fillStyle = '#ffffff';
     ctx.fill();
     const point = points[active];
     ctx.beginPath();
@@ -527,7 +527,7 @@ function createField(ctx, width, height) {
     }
     ctx.beginPath();
     ctx.arc(width / 2, height / 2, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#28d4b4';
+    ctx.fillStyle = '#58e0c4';
     ctx.fill();
     label(ctx, width, height, a('fieldOpen'));
   };
@@ -547,7 +547,7 @@ function createSoftFocus(ctx, width, height) {
     }
     ctx.beginPath();
     ctx.arc(width / 2, height / 2, 8, 0, Math.PI * 2);
-    ctx.fillStyle = '#28d4b4';
+    ctx.fillStyle = '#58e0c4';
     ctx.fill();
     label(ctx, width, height, a('softFocus'));
   };
@@ -562,10 +562,10 @@ function createBreathLook(ctx, width, height) {
     const radius = 16 + Math.abs(Math.sin(t)) * 20;
     ctx.beginPath();
     ctx.arc(width / 2, height * 0.38, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = inhale ? '#50a0e0' : '#28d4b4';
+    ctx.strokeStyle = inhale ? '#71b7ec' : '#58e0c4';
     ctx.lineWidth = 2;
     ctx.stroke();
-    label(ctx, width, height, inhale ? a('inhale') : a('exhale'), inhale ? '#50a0e0' : '#28d4b4');
+    label(ctx, width, height, inhale ? a('inhale') : a('exhale'), inhale ? '#71b7ec' : '#58e0c4');
   };
 }
 
@@ -713,7 +713,7 @@ function startAnim(ctx, width, height, type, isPractice, language = 'fr') {
     star: (c, w, h) => createSaccade(c, w, h, [
       { x: w / 2, y: h * 0.18 }, { x: w * 0.68, y: h * 0.72 }, { x: w * 0.2, y: h * 0.38 },
       { x: w * 0.8, y: h * 0.38 }, { x: w * 0.32, y: h * 0.72 }
-    ], a('star'), '#e8a020'),
+    ], a('star'), '#f1b24a'),
     cardinal: (c, w, h) => createSaccade(c, w, h, [
       { x: w / 2, y: h * 0.18 }, { x: w * 0.78, y: h / 2 }, { x: w / 2, y: h * 0.82 }, { x: w * 0.22, y: h / 2 },
       { x: w * 0.72, y: h * 0.28 }, { x: w * 0.72, y: h * 0.72 }, { x: w * 0.28, y: h * 0.72 }, { x: w * 0.28, y: h * 0.28 }
