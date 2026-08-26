@@ -1,5 +1,6 @@
 const SETTINGS_KEY = 'vp3_settings';
 const ACTIVITY_KEY = 'vp4_activity';
+const TIMER_STATE_KEY = 'vp5_timer_state';
 const LEGACY_HISTORY_KEY = 'vp3_hist';
 const ACTIVITY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ACTIVITY_EVENTS = 200;
@@ -51,6 +52,25 @@ function clearLegacyHistory() {
   catch {}
 }
 
+function loadTimerState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TIMER_STATE_KEY) || 'null');
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveTimerState(state) {
+  try { localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state)); }
+  catch {}
+}
+
+function clearTimerState() {
+  try { localStorage.removeItem(TIMER_STATE_KEY); }
+  catch {}
+}
+
 function loadSettings() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
@@ -71,6 +91,9 @@ window.VisuStorage = {
   saveActivity,
   appendActivityEvent,
   clearLegacyHistory,
+  loadTimerState,
+  saveTimerState,
+  clearTimerState,
   loadSettings,
   saveSettings
 };

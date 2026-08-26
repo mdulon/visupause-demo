@@ -8,6 +8,11 @@ function reminderProgress(remainingSeconds, intervalSeconds) {
   return clamp((intervalSeconds - remaining) / intervalSeconds);
 }
 
+function secondsUntil(deadline, now = Date.now()) {
+  if (!Number.isFinite(deadline)) return 0;
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
 function rhythmState({ running = false, inBreak = false, breakPending = false, idlePaused = false } = {}) {
   if (idlePaused) return 'away';
   if (inBreak) return 'break';
@@ -16,4 +21,4 @@ function rhythmState({ running = false, inBreak = false, breakPending = false, i
   return 'ready';
 }
 
-window.VisuRhythm = { reminderProgress, rhythmState };
+window.VisuRhythm = { reminderProgress, secondsUntil, rhythmState };

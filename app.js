@@ -1,14 +1,19 @@
 (() => {
 const { CATS, EX } = window.VisuData;
 const { startAnim, stopAllAnims } = window.VisuAnimations;
-const { reminderProgress, rhythmState } = window.VisuRhythm;
+const { reminderProgress, secondsUntil, rhythmState } = window.VisuRhythm;
 const { pickExercise, shuffleIndices } = window.VisuSelector;
-const { loadActivity, appendActivityEvent, clearLegacyHistory, loadSettings, saveSettings } = window.VisuStorage;
+const {
+  loadActivity, appendActivityEvent, clearLegacyHistory,
+  loadTimerState, saveTimerState, clearTimerState,
+  loadSettings, saveSettings
+} = window.VisuStorage;
 const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
+const BACKGROUND_TIMER_PATH='src/background-timer.js?v=15';
 const REMINDER_KINDS=['visual','posture'];
 const INTERVAL_LIMITS={
   visual:{ min:10,max:30,step:5 },
@@ -17,6 +22,8 @@ const INTERVAL_LIMITS={
 const OVERLAP_GRACE_SECONDS=5*60;
 const REMINDER_REPEAT_MS=10*60*1000;
 const IDLE_THRESHOLD_MS=2*60*1000;
+const TIMER_STATE_VERSION=1;
+const TIMER_STATE_MAX_AGE_MS=7*24*60*60*1000;
 const SETTINGS_VERSION=4;
 const DEFAULT_ENABLED_CATEGORIES=[...new Set(EX.filter(ex=>ex.defaultEnabled).map(ex=>ex.cat))];
 const DEFAULT_DISABLED_EXERCISES=EX.filter(ex=>!ex.defaultEnabled).map(ex=>ex.id);
@@ -96,7 +103,7 @@ let reminderLeft={ visual:visualSec,posture:postureSec };
 let reminderEndAt={ visual:null,posture:null };
 let workLeft=Math.min(reminderLeft.visual,reminderLeft.posture),breakLeft=breakSec,breakTotal=breakSec;
 let breakEndAt=null;
-let running=false,inBreak=false,breakPending=false,breakComplete=false;
+let running=false,inBreak=false,breakPending=false,breakComplete=false,timerPaused=false;
 let visualBreaksTaken=0,postureBreaksTaken=0,naturalBreaksTaken=0;
 let exerciseQueues={ visual:{ order:[],cursor:0 },posture:{ order:[],cursor:0 },all:{ order:[],cursor:0 } };
 let extUsed=false;
@@ -112,6 +119,7 @@ let practiceReturnFocus=null,settingsReturnFocus=null;
 let pendingReminderKind=null;
 let pendingRepeatAt=null,pendingAcknowledged=false;
 let idleDetector=null,idleController=null,idlePaused=false,idleStartedAt=null,resumeAfterIdle=false,idlePermissionState='unknown';
+let backgroundTimerWorker=null,restoredTimerState=false;
 let settings=normalizeSettings(loadSettings());
 clearLegacyHistory();
 saveSettings(settings);
@@ -122,6 +130,7 @@ workSec=visualSec;
 reminderLeft={ visual:visualSec,posture:postureSec };
 workLeft=Math.min(reminderLeft.visual,reminderLeft.posture);
 resetExerciseQueues();
+restoredTimerState=restoreTimerSnapshot(loadTimerState());
 
 function normalizeSettings(raw={}){
   const categoryKeys=Object.keys(CATS);
@@ -162,6 +171,103 @@ function normalizeInterval(kind,value,fallback){
   if(!Number.isFinite(value))return fallback;
   return Math.min(limits.max,Math.max(limits.min,Math.round(value/limits.step)*limits.step));
 }
+function finiteTimestamp(value,fallback=null){
+  const parsed=Number(value);
+  return Number.isFinite(parsed)&&parsed>0?parsed:fallback;
+}
+function boundedCount(value){
+  const parsed=Math.round(Number(value)||0);
+  return Math.min(100000,Math.max(0,parsed));
+}
+function persistTimerSnapshot(){
+  if(!sessionStarted&&!running&&!inBreak&&!breakPending&&!idlePaused){
+    clearTimerState();
+    return;
+  }
+  if(running&&!inBreak)syncWorkLeft();
+  if(inBreak)syncBreakLeft();
+  syncActiveTracking();
+  saveTimerState({
+    version:TIMER_STATE_VERSION,
+    savedAt:Date.now(),
+    running,inBreak,breakPending,breakComplete,timerPaused,sessionStarted,
+    reminderLeft:{ ...reminderLeft },
+    reminderEndAt:{ ...reminderEndAt },
+    breakLeft,breakTotal,breakEndAt,
+    pendingReminderKind,
+    pendingRepeatAt,
+    pendingAcknowledged,
+    activeBreakExerciseId:activeBreakExercise?.id||null,
+    activeBreakKind,
+    activeBreakSource,
+    extUsed,
+    visualBreaksTaken,postureBreaksTaken,naturalBreaksTaken,
+    sessionId,lastBreakTime,activeTrackedMs,activeTrackingStartedAt,
+    idlePaused,idleStartedAt,resumeAfterIdle
+  });
+}
+function restoreTimerSnapshot(snapshot){
+  const now=Date.now();
+  if(!snapshot||snapshot.version!==TIMER_STATE_VERSION){
+    if(snapshot)clearTimerState();
+    return false;
+  }
+  const savedAt=finiteTimestamp(snapshot.savedAt);
+  if(!savedAt||savedAt>now+60000||now-savedAt>TIMER_STATE_MAX_AGE_MS){
+    clearTimerState();
+    return false;
+  }
+  const visualLeft=Math.min(visualSec,Math.max(0,Math.round(Number(snapshot.reminderLeft?.visual)||0)));
+  const postureLeft=Math.min(postureSec,Math.max(0,Math.round(Number(snapshot.reminderLeft?.posture)||0)));
+  running=Boolean(snapshot.running);
+  inBreak=Boolean(snapshot.inBreak);
+  breakPending=Boolean(snapshot.breakPending)&&!inBreak;
+  breakComplete=Boolean(snapshot.breakComplete)&&inBreak;
+  timerPaused=Boolean(snapshot.timerPaused)&&!running&&!inBreak&&!breakPending;
+  sessionStarted=Boolean(snapshot.sessionStarted)||running||inBreak||breakPending;
+  reminderLeft={ visual:visualLeft,posture:postureLeft };
+  reminderEndAt={ visual:null,posture:null };
+  if(running&&!inBreak){
+    REMINDER_KINDS.forEach(kind=>{
+      const deadline=finiteTimestamp(snapshot.reminderEndAt?.[kind]);
+      reminderEndAt[kind]=deadline;
+      if(deadline)reminderLeft[kind]=secondsUntil(deadline,now);
+    });
+  }
+  pendingReminderKind=REMINDER_KINDS.includes(snapshot.pendingReminderKind)?snapshot.pendingReminderKind:null;
+  if(breakPending){
+    pendingReminderKind=pendingReminderKind||getNextReminderKind();
+    pendingPick=selectNextExercise(pendingReminderKind);
+  }
+  pendingRepeatAt=finiteTimestamp(snapshot.pendingRepeatAt);
+  pendingAcknowledged=Boolean(snapshot.pendingAcknowledged);
+  const restoredExercise=EX.find(ex=>ex.id===snapshot.activeBreakExerciseId)||null;
+  if(inBreak&&!restoredExercise){
+    inBreak=false;
+    breakComplete=false;
+  }
+  if(inBreak)running=false;
+  activeBreakExercise=inBreak?restoredExercise:null;
+  activeBreakKind=inBreak&&REMINDER_KINDS.includes(snapshot.activeBreakKind)?snapshot.activeBreakKind:null;
+  activeBreakSource=['scheduled','manual'].includes(snapshot.activeBreakSource)?snapshot.activeBreakSource:'manual';
+  breakTotal=Math.max(1,Math.round(Number(snapshot.breakTotal)||breakSec));
+  breakEndAt=inBreak&&!breakComplete?finiteTimestamp(snapshot.breakEndAt):null;
+  breakLeft=inBreak?(breakEndAt?secondsUntil(breakEndAt,now):Math.max(0,Math.round(Number(snapshot.breakLeft)||0))):breakSec;
+  extUsed=Boolean(snapshot.extUsed);
+  visualBreaksTaken=boundedCount(snapshot.visualBreaksTaken);
+  postureBreaksTaken=boundedCount(snapshot.postureBreaksTaken);
+  naturalBreaksTaken=boundedCount(snapshot.naturalBreaksTaken);
+  sessionId=finiteTimestamp(snapshot.sessionId,now);
+  lastBreakTime=finiteTimestamp(snapshot.lastBreakTime,now);
+  activeTrackedMs=Math.max(0,Number(snapshot.activeTrackedMs)||0);
+  activeTrackingStartedAt=running&&!inBreak?finiteTimestamp(snapshot.activeTrackingStartedAt,now):null;
+  idlePaused=Boolean(snapshot.idlePaused)&&!inBreak;
+  idleStartedAt=idlePaused?finiteTimestamp(snapshot.idleStartedAt,savedAt):null;
+  resumeAfterIdle=idlePaused&&Boolean(snapshot.resumeAfterIdle);
+  if(idlePaused){running=false;activeTrackingStartedAt=null;}
+  updateDerivedWorkLeft();
+  return true;
+}
 function persistSettings(){
   if(running&&!inBreak&&!breakPending)syncWorkLeft();
   settings=normalizeSettings(settings);
@@ -175,6 +281,7 @@ function persistSettings(){
   updateNotificationButton();
   renderActivityJournal();
   updateUI();
+  persistTimerSnapshot();
 }
 function getBreakCompleteLabel(){
   return t('break.done.'+Math.floor(Math.random()*5));
@@ -191,7 +298,7 @@ function applyLanguage(){
   document.querySelectorAll('[data-i18n-aria-label]').forEach(node=>{node.setAttribute('aria-label',t(node.dataset.i18nAriaLabel));});
   if(UI.settingsBtn)UI.settingsBtn.textContent='⚙ '+t('settings.title');
   if(UI.extBtn)UI.extBtn.textContent='+ 30 sec';
-  if(!inBreak&&!breakPending&&UI.startBtn)UI.startBtn.textContent=running?t('action.pause'):t('action.start');
+  if(!inBreak&&!breakPending&&UI.startBtn)UI.startBtn.textContent=running?t('action.pause'):timerPaused?t('action.resume'):t('action.start');
   if(breakPending)showPendingBreak();
 }
 function isCategoryEnabled(cat){return settings.enabledCategories.includes(cat);}
@@ -376,14 +483,65 @@ function bindActions(){
     if(e.key==='Escape'&&UI.settingsModal.classList.contains('active'))closeSettings();
     trapModalFocus(e);
   });
-  document.addEventListener('visibilitychange', ()=>{
-    catchUpTimers();
-    if(!document.hidden)maybeRepeatPendingReminder();
-  });
-  window.addEventListener('focus', catchUpTimers);
-  window.addEventListener('pageshow', catchUpTimers);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('freeze', handleLifecycleFreeze);
+  document.addEventListener('resume', handleLifecycleWake);
+  window.addEventListener('focus', handleLifecycleWake);
+  window.addEventListener('pageshow', handleLifecycleWake);
+  window.addEventListener('pagehide', handleLifecycleFreeze);
   window.addEventListener('resize', scheduleAnimationResize);
   document.addEventListener('visibilitychange', clearTitleAnnouncement);
+}
+
+function backgroundHeartbeatNeeded(){
+  return document.hidden&&!idlePaused&&(running||inBreak||breakPending);
+}
+function stopBackgroundHeartbeat(){
+  if(!backgroundTimerWorker)return;
+  try{backgroundTimerWorker.postMessage({ type:'STOP' });}
+  catch{}
+  backgroundTimerWorker.terminate();
+  backgroundTimerWorker=null;
+}
+function syncBackgroundHeartbeat(){
+  if(!backgroundHeartbeatNeeded()){
+    stopBackgroundHeartbeat();
+    return;
+  }
+  if(backgroundTimerWorker||!('Worker' in window))return;
+  try{
+    backgroundTimerWorker=new Worker(BACKGROUND_TIMER_PATH);
+    backgroundTimerWorker.addEventListener('message',event=>{
+      if(event.data?.type==='VISUPAUSE_TIMER_TICK')catchUpTimers();
+    });
+    backgroundTimerWorker.addEventListener('error',stopBackgroundHeartbeat,{ once:true });
+    backgroundTimerWorker.postMessage({ type:'START',intervalMs:1000 });
+  }catch{
+    stopBackgroundHeartbeat();
+  }
+}
+function handleVisibilityChange(){
+  catchUpTimers();
+  persistTimerSnapshot();
+  if(document.hidden)syncBackgroundHeartbeat();
+  else{
+    stopBackgroundHeartbeat();
+    maybeRepeatPendingReminder();
+  }
+}
+function handleLifecycleFreeze(){
+  catchUpTimers();
+  persistTimerSnapshot();
+  stopBackgroundHeartbeat();
+  stopWorkTicker();
+  stopBreakTicker();
+}
+function handleLifecycleWake(){
+  catchUpTimers();
+  if(running&&!inBreak&&!ticker)startWorkTicker();
+  if(inBreak&&!breakComplete&&!breakTicker)startBreakTicker();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 
 // ═══ NOTIFICATIONS ════════════════════════════════════════════
@@ -502,6 +660,7 @@ function handleNotificationClick(data={}){
     scheduleAnimationResize();
   }
   updateUI();
+  persistTimerSnapshot();
 }
 function handleLaunchAction(){
   if(!location.hash.startsWith('#pause-due'))return;
@@ -525,6 +684,7 @@ function handleLaunchAction(){
     UI.startBtn.textContent=t('action.startBreak');
   }
   updateUI();
+  persistTimerSnapshot();
 }
 function announceInTitle(text){
   clearTimeout(titleTimer);
@@ -557,6 +717,7 @@ function maybeRepeatPendingReminder(){
   void UI.breakNudge.offsetWidth;
   UI.breakNudge.classList.add('realert');
   notifyBreakDue(ex,kind);
+  persistTimerSnapshot();
   return true;
 }
 
@@ -651,6 +812,8 @@ function beginIdlePause(){
   stopWorkTicker();
   UI.startBtn.textContent=t('action.away');
   updateUI();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function finishIdlePause(){
   if(!idlePaused)return;
@@ -815,10 +978,7 @@ function updateUI(){
   UI.coachBreakBtn.textContent=breakPending?t('action.confirmBreak'):inBreak?t('action.breakRunning'):t('action.breakNow');
 }
 function fmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
-function remainingSeconds(deadline){
-  if(!deadline)return 0;
-  return Math.max(0,Math.ceil((deadline-Date.now())/1000));
-}
+function remainingSeconds(deadline,now=Date.now()){return secondsUntil(deadline,now);}
 function syncWorkLeft(){
   if(running&&!inBreak){
     REMINDER_KINDS.forEach(kind=>{
@@ -917,17 +1077,21 @@ function toggleTimer(){
   if(breakPending){startPendingBreak();return;}
   running=!running;
   if(running){
+    timerPaused=false;
     sessionStarted=true;
     ensureIdleDetection(true);
     UI.startBtn.textContent=t('action.pause');
     startWorkTicker();
   }else{
+    timerPaused=true;
     syncWorkLeft();
     clearReminderDeadlines();
     stopWorkTicker();
     UI.startBtn.textContent=t('action.resume');
     updateUI();
   }
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function startWorkTicker(){
   stopWorkTicker();
@@ -952,9 +1116,20 @@ function stopWorkTicker(){
 function stopBreakTicker(){
   if(breakTicker){clearInterval(breakTicker);breakTicker=null;}
 }
+function startBreakTicker(){
+  stopBreakTicker();
+  if(!inBreak||breakComplete)return;
+  breakTicker=setInterval(()=>{
+    syncBreakLeft();
+    updateBreakProgress();
+    if(breakLeft<=0)completeOrEndBreak();
+    else updateUI();
+  },1000);
+}
 function resetTimer(){
   stopWorkTicker();stopBreakTicker();stopAllAnims();
-  running=false;inBreak=false;breakPending=false;breakComplete=false;breakLeft=breakSec;breakTotal=breakSec;
+  stopBackgroundHeartbeat();
+  running=false;inBreak=false;breakPending=false;breakComplete=false;timerPaused=false;breakLeft=breakSec;breakTotal=breakSec;
   idlePaused=false;idleStartedAt=null;resumeAfterIdle=false;
   reminderLeft={ visual:reminderIntervalSeconds('visual'),posture:reminderIntervalSeconds('posture') };
   updateDerivedWorkLeft();
@@ -968,6 +1143,7 @@ function resetTimer(){
   activeBreakExercise=null;activeBreakKind=null;
   syncOverlayState();
   updateUI();
+  clearTimerState();
 }
 
 // ═══ BREAK ═════════════════════════════════════════════════════
@@ -984,6 +1160,8 @@ function queueBreak(kind=getDueReminderKind()||getNextReminderKind()){
   showPendingBreak();
   UI.startBtn.textContent=t('action.startBreak');
   updateUI();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function showPendingBreak(){
   const kind=pendingReminderKind||getNextReminderKind();
@@ -1014,6 +1192,7 @@ function snoozeBreak(){
   UI.startBtn.textContent=t('action.pause');
   startWorkTicker();
   updateUI();
+  persistTimerSnapshot();
 }
 async function closeDueNotifications(){
   const registration=serviceWorkerReady?await serviceWorkerReady:null;
@@ -1041,10 +1220,13 @@ function registerNaturalBreak({ source='manual',durationSeconds=0,resume }={}){
   naturalBreaksTaken++;
   recordActivity('natural',source,durationSeconds);
   running=shouldResume;
+  if(running)timerPaused=false;
   UI.startBtn.textContent=running?t('action.pause'):t('action.start');
   if(running)startWorkTicker();
   else stopWorkTicker();
   updateUI();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function startPendingBreak(){
   if(!breakPending)return;
@@ -1057,11 +1239,41 @@ function startPendingBreak(){
   hideBreakNudge();
   startBreak({ picked, kind, source:'scheduled' });
 }
+function presentActiveBreak(){
+  const ex=activeBreakExercise;
+  if(!inBreak||!ex)return;
+  const cat=CATS[ex.cat];
+  setBreakStageMode(ex);
+  UI.bCat.textContent=catLabel(ex.cat);UI.bCat.style.color=cat.color;
+  UI.bSrc.textContent=exText(ex,'source');
+  UI.bTitle.textContent=exerciseName(ex);
+  UI.bDesc.textContent=exText(ex,'desc');
+  UI.bTip.textContent=exText(ex,'tip');
+  UI.extBtn.disabled=extUsed||breakComplete;
+  UI.startBtn.textContent=t('action.breakRunning');
+  UI.breakOverlay.classList.toggle('complete',breakComplete);
+  if(breakComplete){
+    UI.brTxt.textContent='✓';
+    UI.brProg.setAttribute('stroke-dashoffset','213.6');
+    UI.endBreakBtn.textContent=getBreakCompleteLabel();
+    UI.endBreakBtn.setAttribute('aria-label',t('break.ariaReady'));
+  }else{
+    UI.endBreakBtn.textContent=t('action.endBreak');
+    UI.endBreakBtn.setAttribute('aria-label',t('break.ariaEnd'));
+    updateBreakProgress();
+  }
+  UI.breakOverlay.classList.add('active');
+  UI.breakOverlay.setAttribute('aria-hidden','false');
+  hideBreakNudge();
+  syncOverlayState();
+  if(ex.pauseMode==='screen'&&!breakComplete)setTimeout(renderBreakAnimation,40);
+  startBreakTicker();
+}
 function startBreak(options={}){
   const { picked=null, source='manual' } = options;
   const kind=options.kind||picked?.exercise?.reminderKind||getNextReminderKind();
   if(running)syncWorkLeft();
-  stopWorkTicker();stopBreakTicker();running=false;inBreak=true;extUsed=false;
+  stopWorkTicker();stopBreakTicker();running=false;inBreak=true;timerPaused=false;extUsed=false;
   clearPendingReminderAttention();
   clearReminderDeadlines();
   const ex=chooseNextExercise(picked,kind);
@@ -1070,34 +1282,11 @@ function startBreak(options={}){
   activeBreakExercise=ex;activeBreakKind=kind;activeBreakSource=source;
   sessionStarted=true;
   closeDueNotifications();
-  setBreakStageMode(ex);
   if(kind==='visual')lastBreakTime=Date.now();
   breakEndAt=Date.now()+breakLeft*1000;
-  const cat=CATS[ex.cat];
-  UI.bCat.textContent=catLabel(ex.cat);UI.bCat.style.color=cat.color;
-  UI.bSrc.textContent=exText(ex,'source');
-  UI.bTitle.textContent=exerciseName(ex);
-  UI.bDesc.textContent=exText(ex,'desc');
-  UI.bTip.textContent=exText(ex,'tip');
-  UI.extBtn.disabled=false;
-  UI.endBreakBtn.textContent=t('action.endBreak');
-  UI.endBreakBtn.setAttribute('aria-label',t('break.ariaEnd'));
-  UI.startBtn.textContent=t('action.breakRunning');
-  UI.breakOverlay.classList.remove('complete');
-  updateBreakProgress();
-  UI.breakOverlay.classList.add('active');
-  UI.breakOverlay.setAttribute('aria-hidden','false');
-  hideBreakNudge();
-  syncOverlayState();
-  if(ex.pauseMode==='screen'){
-    setTimeout(renderBreakAnimation,40);
-  }
-  breakTicker=setInterval(()=>{
-    syncBreakLeft();
-    updateBreakProgress();
-    if(breakLeft<=0)completeOrEndBreak();
-    else updateUI();
-  },1000);
+  presentActiveBreak();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function startManualBreak(){
   if(inBreak)return;
@@ -1141,7 +1330,7 @@ function endBreak(){
   const completedSource=activeBreakSource;
   activeBreakExercise=null;activeBreakKind=null;activeBreakSource='manual';
   breakEndAt=null;
-  inBreak=false;breakComplete=false;running=true;
+  inBreak=false;breakComplete=false;running=true;timerPaused=false;
   if(completedKind==='posture')postureBreaksTaken++;
   else visualBreaksTaken++;
   recordActivity(completedKind,completedSource,breakTotal-breakLeft);
@@ -1151,6 +1340,8 @@ function endBreak(){
   UI.endBreakBtn.setAttribute('aria-label',t('break.ariaEnd'));
   startWorkTicker();
   updateUI();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
 }
 function completeOrEndBreak(){
   if(settings.exitMode==='auto'){endBreak();return;}
@@ -1168,6 +1359,7 @@ function completeBreakTimer(){
   UI.endBreakBtn.setAttribute('aria-label',t('break.ariaReady'));
   UI.endBreakBtn.focus();
   updateUI();
+  persistTimerSnapshot();
 }
 function extendBreak(){
   if(extUsed||breakComplete)return;
@@ -1179,6 +1371,7 @@ function extendBreak(){
   UI.extBtn.disabled=true;
   updateBreakProgress();
   updateUI();
+  persistTimerSnapshot();
 }
 
 // ═══ PRACTICE MODAL ════════════════════════════════════════════
@@ -1258,6 +1451,37 @@ function resetSession(){
   resetTimer();
 }
 
+function resumeRestoredTimerState(){
+  if(!restoredTimerState)return;
+  if(idlePaused){
+    finishIdlePause();
+    return;
+  }
+  if(inBreak){
+    syncBreakLeft();
+    if(breakLeft<=0&&settings.exitMode==='auto'){
+      endBreak();
+      return;
+    }
+    if(breakLeft<=0){breakComplete=true;breakEndAt=null;}
+    presentActiveBreak();
+  }else{
+    if(breakPending){
+      showPendingBreak();
+      UI.startBtn.textContent=t('action.startBreak');
+    }
+    if(running){
+      startWorkTicker();
+      ensureIdleDetection(false);
+    }else if(timerPaused){
+      UI.startBtn.textContent=t('action.resume');
+    }
+  }
+  catchUpTimers();
+  persistTimerSnapshot();
+  syncBackgroundHeartbeat();
+}
+
 // ═══ INIT ══════════════════════════════════════════════════════
 registerServiceWorker();
 bindActions();
@@ -1265,8 +1489,9 @@ renderExerciseLibrary();
 renderSettings();
 applyLanguage();
 renderActivityJournal();
+resumeRestoredTimerState();
 handleLaunchAction();
 updateNotificationButton();
-setInterval(updateUI,3000);
-updateUI();
+setInterval(catchUpTimers,3000);
+catchUpTimers();
 })();
