@@ -1,22 +1,22 @@
-const CACHE_NAME = 'visupause-pro-v15';
+const CACHE_NAME = 'visupause-pro-v16';
 const APP_SHELL = [
   './',
   './index.html',
   './privacy.html',
   './terms.html',
-  './styles.css?v=15',
-  './app.js?v=15',
+  './styles.css?v=16',
+  './app.js?v=16',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './src/exercises.js?v=15',
-  './src/animations.js?v=15',
-  './src/rhythm.js?v=15',
-  './src/background-timer.js?v=15',
-  './src/selector.js?v=15',
-  './src/storage.js?v=15',
-  './src/i18n.js?v=15'
+  './src/exercises.js?v=16',
+  './src/animations.js?v=16',
+  './src/rhythm.js?v=16',
+  './src/background-timer.js?v=16',
+  './src/selector.js?v=16',
+  './src/storage.js?v=16',
+  './src/i18n.js?v=16'
 ];
 
 self.addEventListener('install', event => {

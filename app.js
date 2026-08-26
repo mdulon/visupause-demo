@@ -13,7 +13,7 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
-const BACKGROUND_TIMER_PATH='src/background-timer.js?v=15';
+const BACKGROUND_TIMER_PATH='src/background-timer.js?v=16';
 const REMINDER_KINDS=['visual','posture'];
 const INTERVAL_LIMITS={
   visual:{ min:10,max:30,step:5 },
@@ -21,6 +21,7 @@ const INTERVAL_LIMITS={
 };
 const OVERLAP_GRACE_SECONDS=5*60;
 const REMINDER_REPEAT_MS=10*60*1000;
+const NOTIFICATION_READY_TIMEOUT_MS=2500;
 const IDLE_THRESHOLD_MS=2*60*1000;
 const TIMER_STATE_VERSION=1;
 const TIMER_STATE_MAX_AGE_MS=7*24*60*60*1000;
@@ -488,7 +489,7 @@ function bindActions(){
   document.addEventListener('resume', handleLifecycleWake);
   window.addEventListener('focus', handleLifecycleWake);
   window.addEventListener('pageshow', handleLifecycleWake);
-  window.addEventListener('pagehide', handleLifecycleFreeze);
+  window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('resize', scheduleAnimationResize);
   document.addEventListener('visibilitychange', clearTitleAnnouncement);
 }
@@ -521,25 +522,35 @@ function syncBackgroundHeartbeat(){
   }
 }
 function handleVisibilityChange(){
-  catchUpTimers();
-  persistTimerSnapshot();
-  if(document.hidden)syncBackgroundHeartbeat();
-  else{
-    stopBackgroundHeartbeat();
-    maybeRepeatPendingReminder();
+  if(!document.hidden){
+    handleLifecycleWake();
+    return;
   }
-}
-function handleLifecycleFreeze(){
   catchUpTimers();
   persistTimerSnapshot();
+  syncBackgroundHeartbeat();
+}
+function suspendTimerSchedulers(){
   stopBackgroundHeartbeat();
   stopWorkTicker();
   stopBreakTicker();
 }
-function handleLifecycleWake(){
+function handleLifecycleFreeze(){
   catchUpTimers();
-  if(running&&!inBreak&&!ticker)startWorkTicker();
+  persistTimerSnapshot();
+  suspendTimerSchedulers();
+}
+function handlePageHide(event){
+  catchUpTimers();
+  persistTimerSnapshot();
+  if(event.persisted)suspendTimerSchedulers();
+}
+function handleLifecycleWake(){
+  stopBackgroundHeartbeat();
+  catchUpTimers();
+  if(running&&!inBreak&&!ticker)startWorkTicker({ preserveDeadlines:true });
   if(inBreak&&!breakComplete&&!breakTicker)startBreakTicker();
+  maybeRepeatPendingReminder();
   persistTimerSnapshot();
   syncBackgroundHeartbeat();
 }
@@ -620,17 +631,35 @@ async function toggleNotifications(){
   }
   updateNotificationButton();
 }
+async function getNotificationRegistration(){
+  if(!('serviceWorker' in navigator))return null;
+  try{
+    const current=await navigator.serviceWorker.getRegistration();
+    if(current?.active)return current;
+  }catch{}
+  if(!serviceWorkerReady)return null;
+  let timeoutId=null;
+  try{
+    return await Promise.race([
+      serviceWorkerReady,
+      new Promise(resolve=>{timeoutId=setTimeout(()=>resolve(null),NOTIFICATION_READY_TIMEOUT_MS);})
+    ]);
+  }finally{
+    if(timeoutId!==null)clearTimeout(timeoutId);
+  }
+}
 async function sendNotification(title,body,tag,data={}){
   if(!notificationsEnabled||notificationStatus()!=='granted')return;
   const options={
     body,
     tag,
     renotify:true,
-    icon:'icons/icon.svg',
-    badge:'icons/icon.svg',
+    requireInteraction:true,
+    icon:'icons/icon-192.png',
+    badge:'icons/icon-192.png',
     data:{ url:'./index.html',...data }
   };
-  const registration=serviceWorkerReady?await serviceWorkerReady:null;
+  const registration=await getNotificationRegistration();
   if(registration&&registration.showNotification){
     try{
       await registration.showNotification(title,options);
@@ -1014,6 +1043,14 @@ function setReminderDeadlines(){
   const activeKinds=getActiveReminderKinds();
   REMINDER_KINDS.forEach(kind=>{reminderEndAt[kind]=activeKinds.includes(kind)?now+reminderLeft[kind]*1000:null;});
 }
+function preserveOrSetReminderDeadlines(){
+  const now=Date.now();
+  const activeKinds=getActiveReminderKinds();
+  REMINDER_KINDS.forEach(kind=>{
+    if(!activeKinds.includes(kind))reminderEndAt[kind]=null;
+    else if(!reminderEndAt[kind])reminderEndAt[kind]=now+reminderLeft[kind]*1000;
+  });
+}
 function clearReminderDeadlines(){
   REMINDER_KINDS.forEach(kind=>{reminderEndAt[kind]=null;});
 }
@@ -1093,10 +1130,11 @@ function toggleTimer(){
   persistTimerSnapshot();
   syncBackgroundHeartbeat();
 }
-function startWorkTicker(){
+function startWorkTicker({ preserveDeadlines=false }={}){
   stopWorkTicker();
   if(idlePaused)return;
-  setReminderDeadlines();
+  if(preserveDeadlines)preserveOrSetReminderDeadlines();
+  else setReminderDeadlines();
   ticker=setInterval(()=>{
     syncWorkLeft();
     if(breakPending){
