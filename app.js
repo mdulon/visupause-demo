@@ -13,7 +13,7 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
-const BACKGROUND_TIMER_PATH='src/background-timer.js?v=16';
+const BACKGROUND_TIMER_PATH='src/background-timer.js?v=17';
 const REMINDER_KINDS=['visual','posture'];
 const INTERVAL_LIMITS={
   visual:{ min:10,max:30,step:5 },
@@ -22,7 +22,7 @@ const INTERVAL_LIMITS={
 const OVERLAP_GRACE_SECONDS=5*60;
 const REMINDER_REPEAT_MS=10*60*1000;
 const NOTIFICATION_READY_TIMEOUT_MS=2500;
-const IDLE_THRESHOLD_MS=2*60*1000;
+const IDLE_THRESHOLD_MS=3*60*1000;
 const TIMER_STATE_VERSION=1;
 const TIMER_STATE_MAX_AGE_MS=7*24*60*60*1000;
 const SETTINGS_VERSION=4;
@@ -119,6 +119,8 @@ let activePracticeExercise=null,practiceResizeTimer=null;
 let practiceReturnFocus=null,settingsReturnFocus=null;
 let pendingReminderKind=null;
 let pendingRepeatAt=null,pendingAcknowledged=false;
+let pendingReminderId=null,pendingNotificationChannel=null;
+let lockedAt=null,lockTimer=null;
 let idleDetector=null,idleController=null,idlePaused=false,idleStartedAt=null,resumeAfterIdle=false,idlePermissionState='unknown';
 let backgroundTimerWorker=null,restoredTimerState=false;
 let settings=normalizeSettings(loadSettings());
@@ -195,7 +197,7 @@ function persistTimerSnapshot(){
     reminderLeft:{ ...reminderLeft },
     reminderEndAt:{ ...reminderEndAt },
     breakLeft,breakTotal,breakEndAt,
-    pendingReminderKind,
+    pendingReminderKind,pendingReminderId,pendingNotificationChannel,
     pendingRepeatAt,
     pendingAcknowledged,
     activeBreakExerciseId:activeBreakExercise?.id||null,
@@ -236,6 +238,8 @@ function restoreTimerSnapshot(snapshot){
     });
   }
   pendingReminderKind=REMINDER_KINDS.includes(snapshot.pendingReminderKind)?snapshot.pendingReminderKind:null;
+  pendingReminderId=typeof snapshot.pendingReminderId==='string'?snapshot.pendingReminderId:null;
+  pendingNotificationChannel=snapshot.pendingNotificationChannel==='system'?'system':null;
   if(breakPending){
     pendingReminderKind=pendingReminderKind||getNextReminderKind();
     pendingPick=selectNextExercise(pendingReminderKind);
@@ -573,6 +577,10 @@ function saveNotificationPreference(value){
   notificationsEnabled=value;
   try{localStorage.setItem(NOTIFY_PREF_KEY,value?'1':'0');}
   catch{}
+  if(!value){
+    closeDueNotifications();
+    if(breakPending){pendingNotificationChannel='fallback';showPendingBreak();}
+  }
 }
 function notificationStatus(){
   if(!('Notification' in window))return 'unsupported';
@@ -649,7 +657,7 @@ async function getNotificationRegistration(){
   }
 }
 async function sendNotification(title,body,tag,data={}){
-  if(!notificationsEnabled||notificationStatus()!=='granted')return;
+  if(!notificationsEnabled||notificationStatus()!=='granted')return false;
   const options={
     body,
     tag,
@@ -659,14 +667,30 @@ async function sendNotification(title,body,tag,data={}){
     badge:'icons/icon-192.png',
     data:{ url:'./index.html',...data }
   };
+  const isReminder=tag==='visupause-break-due';
+  if(isReminder){
+    if('maxActions' in Notification&&Notification.maxActions<2)return false;
+    options.actions=[
+      { action:'start-break',title:t('notify.startBreak') },
+      { action:'snooze',title:t('nudge.snooze') }
+    ];
+  }
   const registration=await getNotificationRegistration();
+  if(isReminder&&(!notificationsEnabled||!breakPending||data.reminderId!==pendingReminderId||idlePaused))return false;
   if(registration&&registration.showNotification){
     try{
       await registration.showNotification(title,options);
+      if(isReminder&&(!notificationsEnabled||!breakPending||data.reminderId!==pendingReminderId||idlePaused)){
+        const notices=await registration.getNotifications({ tag });
+        notices.filter(notice=>notice.data?.reminderId===data.reminderId).forEach(notice=>notice.close());
+        return false;
+      }
       if(navigator.vibrate)navigator.vibrate([180,80,180]);
-      return;
+      return true;
     }catch{}
   }
+  // A reminder without system action buttons uses only the in-app fallback.
+  if(isReminder)return false;
   try{
     const notice=new Notification(title,options);
     notice.onclick=()=>{
@@ -680,24 +704,25 @@ async function sendNotification(title,body,tag,data={}){
 }
 function handleNotificationClick(data={}){
   clearTitleAnnouncement();
-  if(data.tag==='visupause-break-due')clearPendingReminderAttention();
-  catchUpTimers();
-  if(data.tag==='visupause-break-due'&&breakPending)showPendingBreak();
-  if(inBreak){
-    UI.breakOverlay.classList.add('active');
-    updateBreakProgress();
-    scheduleAnimationResize();
+  if(data.tag==='visupause-break-due'){
+    if(!breakPending||idlePaused)return;
+    if(data.reminderId&&data.reminderId!==pendingReminderId)return;
+    if(data.reminderKind&&data.reminderKind!==pendingReminderKind)return;
+    if(data.action==='snooze')snoozeBreak();
+    else startPendingBreak();
+    return;
   }
+  catchUpTimers();
   updateUI();
   persistTimerSnapshot();
 }
 function handleLaunchAction(){
-  if(!location.hash.startsWith('#pause-due'))return;
-  const requestedKind=location.hash.split('=')[1];
+  if(!location.hash.startsWith('#pause-due='))return;
+  const params=new URLSearchParams(location.hash.slice(1));
+  const requestedKind=params.get('pause-due');
   const launchKind=REMINDER_KINDS.includes(requestedKind)?requestedKind:'visual';
   history.replaceState(null,'',location.pathname+location.search);
-  if(!inBreak&&!breakPending){
-    if(running)syncWorkLeft();
+  if(!restoredTimerState&&!inBreak&&!breakPending){
     stopWorkTicker();
     running=false;
     clearReminderDeadlines();
@@ -705,15 +730,14 @@ function handleLaunchAction(){
     workLeft=0;
     sessionStarted=true;
     pendingReminderKind=launchKind;
+    pendingReminderId=params.get('id');
     pendingPick=selectNextExercise(pendingReminderKind);
     breakPending=true;
-    pendingAcknowledged=true;
-    pendingRepeatAt=null;
-    showPendingBreak();
-    UI.startBtn.textContent=t('action.startBreak');
   }
-  updateUI();
-  persistTimerSnapshot();
+  handleNotificationClick({
+    tag:'visupause-break-due',reminderKind:launchKind,
+    reminderId:params.get('id'),action:params.get('action')
+  });
 }
 function announceInTitle(text){
   clearTimeout(titleTimer);
@@ -723,9 +747,16 @@ function announceInTitle(text){
 function clearTitleAnnouncement(){
   if(!document.hidden)document.title=BASE_TITLE;
 }
-function notifyBreakDue(ex,kind){
+async function notifyBreakDue(ex,kind){
   announceInTitle(t('title.breakReady'));
-  sendNotification(t('notify.breakDueTitle'), `${t('notify.breakDueBody')}${exerciseName(ex)}.`, 'visupause-break-due', { reminderKind:kind });
+  const reminderId=pendingReminderId;
+  pendingNotificationChannel='sending';
+  hideBreakNudge();
+  const delivered=await sendNotification(t('notify.breakDueTitle'), `${exerciseName(ex)}. ${t('notify.breakDueBody')}`, 'visupause-break-due', { reminderKind:kind,reminderId });
+  if(!breakPending||pendingReminderId!==reminderId||idlePaused)return;
+  pendingNotificationChannel=delivered?'system':'fallback';
+  showPendingBreak();
+  persistTimerSnapshot();
 }
 function schedulePendingReminderRepeat(){
   pendingAcknowledged=false;
@@ -734,6 +765,7 @@ function schedulePendingReminderRepeat(){
 function clearPendingReminderAttention(){
   pendingRepeatAt=null;
   pendingAcknowledged=false;
+  pendingNotificationChannel=null;
   UI.breakNudge.classList.remove('realert');
 }
 function maybeRepeatPendingReminder(){
@@ -788,6 +820,8 @@ async function setIdleDetection(mode){
   persistSettings();
 }
 function stopIdleDetection(){
+  clearTimeout(lockTimer);
+  lockTimer=null;lockedAt=null;
   idleController?.abort();
   idleController=null;
   idleDetector=null;
@@ -809,11 +843,7 @@ async function ensureIdleDetection(requestPermission=false){
     }
     idleController=new AbortController();
     idleDetector=new window.IdleDetector();
-    idleDetector.addEventListener('change',()=>{
-      const away=idleDetector.userState==='idle'||idleDetector.screenState==='locked';
-      if(away)beginIdlePause();
-      else finishIdlePause();
-    });
+    idleDetector.addEventListener('change',handleIdleChange);
     await idleDetector.start({ threshold:IDLE_THRESHOLD_MS,signal:idleController.signal });
     idlePermissionState='granted';
     renderSettings();
@@ -825,10 +855,25 @@ async function ensureIdleDetection(requestPermission=false){
     return false;
   }
 }
-function beginIdlePause(){
+function handleIdleChange(){
+  clearTimeout(lockTimer);
+  lockTimer=null;
+  if(idleDetector.screenState==='locked'){
+    if(lockedAt===null)lockedAt=Date.now();
+    if(idleDetector.userState==='idle')beginIdlePause();
+    else if(Date.now()-lockedAt>=IDLE_THRESHOLD_MS)beginIdlePause(lockedAt);
+    else lockTimer=setTimeout(()=>beginIdlePause(lockedAt),IDLE_THRESHOLD_MS-(Date.now()-lockedAt));
+  }else{
+    // Timers can be suspended while locked: qualify the absence on unlock too.
+    if(lockedAt!==null&&Date.now()-lockedAt>=IDLE_THRESHOLD_MS)beginIdlePause(lockedAt);
+    lockedAt=null;
+    if(idleDetector.userState==='idle')beginIdlePause();
+    else finishIdlePause();
+  }
+}
+function beginIdlePause(idleBeganAt=Date.now()-IDLE_THRESHOLD_MS){
   if(idlePaused||inBreak||(!running&&!breakPending))return;
   syncWorkLeft();
-  const idleBeganAt=Date.now()-IDLE_THRESHOLD_MS;
   if(activeTrackingStartedAt!==null){
     activeTrackedMs+=Math.max(0,idleBeganAt-activeTrackingStartedAt);
     activeTrackingStartedAt=null;
@@ -837,6 +882,8 @@ function beginIdlePause(){
   running=false;
   idlePaused=true;
   idleStartedAt=idleBeganAt;
+  hideBreakNudge();
+  closeDueNotifications();
   clearReminderDeadlines();
   stopWorkTicker();
   UI.startBtn.textContent=t('action.away');
@@ -1193,6 +1240,7 @@ function queueBreak(kind=getDueReminderKind()||getNextReminderKind()){
   reminderEndAt[kind]=null;
   sessionStarted=true;
   pendingPick=pendingPick||selectNextExercise(kind);
+  pendingReminderId=crypto.randomUUID();
   schedulePendingReminderRepeat();
   notifyBreakDue(pendingPick.exercise,kind);
   showPendingBreak();
@@ -1202,6 +1250,11 @@ function queueBreak(kind=getDueReminderKind()||getNextReminderKind()){
   syncBackgroundHeartbeat();
 }
 function showPendingBreak(){
+  if(idlePaused||!breakPending||pendingNotificationChannel==='sending'||
+    (pendingNotificationChannel==='system'&&notificationsEnabled&&notificationStatus()==='granted')){
+    hideBreakNudge();
+    return;
+  }
   const kind=pendingReminderKind||getNextReminderKind();
   const ex=pendingPick?.exercise||getUpcomingExercise(kind);
   UI.nudgeTitle.textContent=t(`nudge.${kind}Title`);

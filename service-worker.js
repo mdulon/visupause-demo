@@ -1,22 +1,22 @@
-const CACHE_NAME = 'visupause-pro-v16';
+const CACHE_NAME = 'visupause-pro-v17';
 const APP_SHELL = [
   './',
   './index.html',
   './privacy.html',
   './terms.html',
-  './styles.css?v=16',
-  './app.js?v=16',
+  './styles.css?v=17',
+  './app.js?v=17',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './src/exercises.js?v=16',
-  './src/animations.js?v=16',
-  './src/rhythm.js?v=16',
-  './src/background-timer.js?v=16',
-  './src/selector.js?v=16',
-  './src/storage.js?v=16',
-  './src/i18n.js?v=16'
+  './src/exercises.js?v=17',
+  './src/animations.js?v=17',
+  './src/rhythm.js?v=17',
+  './src/background-timer.js?v=17',
+  './src/selector.js?v=17',
+  './src/storage.js?v=17',
+  './src/i18n.js?v=17'
 ];
 
 self.addEventListener('install', event => {
@@ -72,17 +72,27 @@ self.addEventListener('notificationclick', event => {
   const reminderKind = ['visual', 'posture'].includes(event.notification.data?.reminderKind)
     ? event.notification.data.reminderKind
     : 'visual';
-  if (event.notification.tag === 'visupause-break-due') targetUrl.hash = `pause-due=${reminderKind}`;
+  const action = event.action === 'snooze' ? 'snooze' : 'start-break';
+  const reminderId = event.notification.data?.reminderId || '';
+  if (event.notification.tag === 'visupause-break-due') {
+    targetUrl.hash = new URLSearchParams({ 'pause-due': reminderKind, action, id: reminderId }).toString();
+  }
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      const sameAppClient = clientList.find(client => client.url.startsWith(self.registration.scope));
+      const appUrl = new URL('./index.html', self.location.href);
+      const rootUrl = new URL('./', self.location.href);
+      const sameAppClient = clientList.find(client => {
+        const url = new URL(client.url);
+        return url.origin === appUrl.origin && [appUrl.pathname, rootUrl.pathname].includes(url.pathname);
+      });
       if (sameAppClient) {
         sameAppClient.postMessage({
           type: 'VISUPAUSE_NOTIFICATION_CLICK',
           tag: event.notification.tag,
-          reminderKind,
+          reminderKind,action,reminderId,
           url: targetUrl.href
         });
+        if (event.notification.tag === 'visupause-break-due' && action === 'snooze') return;
         return sameAppClient.focus();
       }
       return clients.openWindow(targetUrl.href);
