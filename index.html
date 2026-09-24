@@ -13,9 +13,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=17">
+<link rel="stylesheet" href="styles.css?v=19">
 </head>
-<body>
+<body data-view="simple">
 
 <header>
   <div class="logo">
@@ -29,6 +29,10 @@
   </div>
 </header>
 
+<nav class="view-switch segmented" aria-label="Mode d’affichage" data-i18n-aria-label="view.label">
+  <button type="button" data-action="set-view" data-value="simple" data-i18n="view.simple" aria-pressed="true">Simple</button>
+  <button type="button" data-action="set-view" data-value="expert" data-i18n="view.expert" aria-pressed="false">Expert</button>
+</nav>
 <main>
   <section class="approach-card" aria-labelledby="approachTitle">
     <div class="approach-copy">
@@ -58,6 +62,11 @@
         <div class="score-lbl" data-i18n="rhythm.next">Prochain rappel</div>
         <div class="score-status" id="rhythmStatus">Prêt à démarrer</div>
       </div>
+    </div>
+    <div class="simple-actions">
+      <button class="tbtn pri" id="simpleStartBtn" data-action="toggle-timer" type="button">▶ Démarrer</button>
+      <button class="coach-secondary" data-action="start-break-now" type="button" data-i18n="action.breakNow">Pause maintenant</button>
+      <button class="coach-secondary" data-action="register-natural-break" type="button" data-i18n="action.naturalBreak">J’ai déjà quitté l’écran</button>
     </div>
     <div class="ring-legend">
       <div class="leg"><div class="leg-dot" style="background:#58e0c4"></div><span data-i18n="legend.visual">Regard au loin</span></div>
@@ -140,6 +149,7 @@
 </main>
 
 <footer class="legal-footer">
+  <p class="tester-thanks" data-i18n="tester.thanks">Merci de tester VisuPause et de partager vos retours !</p>
   <a href="privacy.html">Privacy</a>
   <span aria-hidden="true">·</span>
   <a href="terms.html">Terms</a>
@@ -215,7 +225,7 @@
       </div>
       <button class="icon-btn" data-action="close-settings" type="button" aria-label="Fermer les paramètres" data-i18n-aria-label="settings.close">×</button>
     </div>
-    <div class="settings-body">
+    <div class="settings-body"><section class="settings-section"><div class="settings-label" data-i18n="theme.label">Apparence</div><div class="segmented appearance-options"><button type="button" data-action="set-theme" data-value="system" data-i18n="theme.system">Système</button><button type="button" data-action="set-theme" data-value="light" data-i18n="theme.light">Clair</button><button type="button" data-action="set-theme" data-value="dark" data-i18n="theme.dark">Sombre</button></div></section><section class="settings-section"><div class="settings-label" data-i18n="palette.label">Palette</div><div class="segmented appearance-options"><button type="button" data-action="set-palette" data-value="mint" data-i18n="palette.mint">Menthe</button><button type="button" data-action="set-palette" data-value="orange" data-i18n="palette.orange">Orange</button><button type="button" data-action="set-palette" data-value="violet" data-i18n="palette.violet">Violet</button><button type="button" data-action="set-palette" data-value="blue" data-i18n="palette.blue">Bleu</button></div></section>
       <section class="settings-section">
         <div class="settings-label" data-i18n="settings.language">Langue</div>
         <div class="segmented" id="languageSettings">
@@ -287,12 +297,12 @@
   </div>
 </div>
 
-<script src="src/exercises.js?v=17"></script>
-<script src="src/animations.js?v=17"></script>
-<script src="src/rhythm.js?v=17"></script>
-<script src="src/selector.js?v=17"></script>
-<script src="src/storage.js?v=17"></script>
-<script src="src/i18n.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="src/exercises.js?v=19"></script>
+<script src="src/animations.js?v=19"></script>
+<script src="src/rhythm.js?v=19"></script>
+<script src="src/selector.js?v=19"></script>
+<script src="src/storage.js?v=19"></script>
+<script src="src/i18n.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

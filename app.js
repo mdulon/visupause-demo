@@ -13,7 +13,7 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
-const BACKGROUND_TIMER_PATH='src/background-timer.js?v=17';
+const BACKGROUND_TIMER_PATH='src/background-timer.js?v=19';
 const REMINDER_KINDS=['visual','posture'];
 const INTERVAL_LIMITS={
   visual:{ min:10,max:30,step:5 },
@@ -162,6 +162,9 @@ function normalizeSettings(raw={}){
     enabledCategories:hasActiveExercise?activeCategories:DEFAULT_SETTINGS.enabledCategories.slice(),
     disabledExercises:hasActiveExercise?disabledExercises:DEFAULT_SETTINGS.disabledExercises.slice(),
     exitMode:raw.exitMode==='auto'?'auto':'manual',
+    view:raw.view==='expert'?'expert':'simple',
+    theme:['light','dark'].includes(raw.theme)?raw.theme:'system',
+    palette:['orange','violet','blue'].includes(raw.palette)?raw.palette:'mint',
     idleDetectionEnabled:raw.idleDetectionEnabled!==false,
     visualIntervalMinutes,
     postureIntervalMinutes,
@@ -287,6 +290,34 @@ function persistSettings(){
   renderActivityJournal();
   updateUI();
   persistTimerSnapshot();
+}
+function applyAppearance(){
+  const dark=settings.theme==='dark'||(settings.theme==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme=dark?'dark':'light';
+  document.documentElement.dataset.palette=settings.palette;
+  document.body.dataset.view=settings.view;
+  document.querySelector('meta[name="theme-color"]').content=dark?'#16212a':'#f4f7fa';
+  ['view','theme','palette'].forEach(key=>{
+    document.querySelectorAll(`[data-action="set-${key}"]`).forEach(button=>{
+      const selected=button.dataset.value===settings[key];
+      button.classList.toggle('active',selected);
+      button.setAttribute('aria-pressed',String(selected));
+    });
+  });
+}
+function setAppearance(key,value){
+  settings[key]=value;
+  settings=normalizeSettings(settings);
+  saveSettings(settings);
+  applyAppearance();
+  if(key==='view'&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    document.querySelector('main').animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:240,easing:'ease-out'});
+  }
+}
+function syncSimpleControls(){
+  const button=$('simpleStartBtn');
+  button.textContent=UI.startBtn.textContent;
+  button.disabled=UI.startBtn.disabled;
 }
 function getBreakCompleteLabel(){
   return t('break.done.'+Math.floor(Math.random()*5));
@@ -435,6 +466,9 @@ function bindActions(){
         'toggle-notifications':toggleNotifications,'confirm-break-start':startPendingBreak,
         'open-settings':openSettings,
         'close-settings':closeSettings,'reset-exercise-settings':resetExerciseSettings,
+        'set-view':()=>setAppearance('view',actionTarget.dataset.value),
+        'set-theme':()=>setAppearance('theme',actionTarget.dataset.value),
+        'set-palette':()=>setAppearance('palette',actionTarget.dataset.value),
         'set-exit-mode':()=>setExitMode(actionTarget.dataset.mode),
         'set-idle-detection':()=>setIdleDetection(actionTarget.dataset.mode),
         'set-language':()=>setLanguage(actionTarget.dataset.lang)
@@ -1019,7 +1053,7 @@ function updateUI(){
   UI.rhythmValue.textContent=state==='running'?fmt(workLeft)
     :state==='pending'?t('rhythm.readyValue')
       :state==='break'?`${breakLeft}s`
-        :state==='away'?t('rhythm.awayValue'):'—';
+        :state==='away'?t('rhythm.awayValue'):fmt(workLeft);
   UI.rhythmStatus.textContent=state==='running'?t('timer.'+nextReminderKind)
     :state==='pending'?t(`nudge.${nextReminderKind}Title`)
       :state==='break'?t('rhythm.status.break')
@@ -1574,6 +1608,10 @@ function resumeRestoredTimerState(){
 }
 
 // ═══ INIT ══════════════════════════════════════════════════════
+applyAppearance();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyAppearance);
+new MutationObserver(syncSimpleControls).observe(UI.startBtn,{childList:true,attributes:true,characterData:true,subtree:true});
+syncSimpleControls();
 registerServiceWorker();
 bindActions();
 renderExerciseLibrary();
@@ -1583,6 +1621,7 @@ renderActivityJournal();
 resumeRestoredTimerState();
 handleLaunchAction();
 updateNotificationButton();
+updateUI();
 setInterval(catchUpTimers,3000);
 catchUpTimers();
 })();

@@ -1,5 +1,6 @@
 const UI_TEXT = {
   fr: {
+"view.label":"Mode d’affichage","view.simple":"Simple","view.expert":"Expert","theme.label":"Apparence","theme.system":"Système","theme.light":"Clair","theme.dark":"Sombre","palette.label":"Palette","palette.mint":"Menthe","palette.orange":"Orange","palette.violet":"Violet","palette.blue":"Bleu","tester.thanks":"Merci de tester VisuPause et de partager vos retours !",
     'action.close':'Fermer','action.reset':'Réinitialiser','action.description':'Description','action.test':'Tester','action.preview':'Voir la pratique',
     'action.start':'▶ Démarrer','action.pause':'⏸ Pause','action.resume':'▶ Reprendre','action.startBreak':'▶ Démarrer la pause',
     'action.breakNow':'Pause maintenant','action.breakRunning':'Pause en cours','action.confirmBreak':'Démarrer la pause',
@@ -55,6 +56,7 @@ const UI_TEXT = {
     'reset.confirm':'Réinitialiser cette session ?','time.minute':'m','time.hour':'h'
   },
   en: {
+"view.label":"Display mode","view.simple":"Simple","view.expert":"Expert","theme.label":"Appearance","theme.system":"System","theme.light":"Light","theme.dark":"Dark","palette.label":"Palette","palette.mint":"Mint","palette.orange":"Orange","palette.violet":"Violet","palette.blue":"Blue","tester.thanks":"Thanks for testing VisuPause and sharing your feedback!",
     'action.close':'Close','action.reset':'Reset','action.description':'Details','action.test':'Try','action.preview':'View practice',
     'action.start':'▶ Start','action.pause':'⏸ Pause','action.resume':'▶ Resume','action.startBreak':'▶ Start break',
     'action.breakNow':'Break now','action.breakRunning':'Break running','action.confirmBreak':'Start break',
