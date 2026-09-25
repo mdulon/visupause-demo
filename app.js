@@ -13,7 +13,7 @@ const { UI_TEXT, CAT_TEXT, EVIDENCE_TEXT, EX_TEXT } = window.VisuI18n;
 const NOTIFY_PREF_KEY='vp_notify_enabled';
 const BASE_TITLE=document.title;
 const SERVICE_WORKER_PATH='service-worker.js';
-const BACKGROUND_TIMER_PATH='src/background-timer.js?v=19';
+const BACKGROUND_TIMER_PATH='src/background-timer.js?v=20';
 const REMINDER_KINDS=['visual','posture'];
 const INTERVAL_LIMITS={
   visual:{ min:10,max:30,step:5 },
